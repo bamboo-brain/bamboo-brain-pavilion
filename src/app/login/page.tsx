@@ -55,9 +55,9 @@ export default function LoginPage() {
           <div className={styles.logoMark}>
             <LeafIcon />
           </div>
-          <div className={styles.logoWords}>
-            <Text className={styles.logoText}>BambooBrain</Text>
-            <Text className={styles.logoTextZh}>竹子大脑</Text>
+          <div className={styles.logoWords} style={{ gap: 0 }}>
+            <Text className={styles.logoText} c="white" fw={800} size="lg" lh={1.1}>BambooBrain</Text>
+            <Text className={styles.logoTextZh} c="rgba(255, 255, 255, 0.7)" lh={1} mt={1}>竹子大脑</Text>
           </div>
         </div>
 
@@ -65,12 +65,11 @@ export default function LoginPage() {
         <div className={styles.heroContent}>
           {/* Large decorative watermark */}
           <div className={styles.heroWatermark} aria-hidden="true">竹子大脑</div>
-          <Text className={styles.heroLabel}>学无止境</Text>
-          <Title order={1} className={styles.heroTitle}>
+          <Title order={1} className={styles.heroTitle} c="white" fw={900} style={{ fontSize: 'clamp(3rem, 5vw, 4rem)', lineHeight: 1 }} mb="lg" mt="sm">
             Welcome to<br />
             the <span className={styles.heroTitleAccent}>Pavilion</span>
           </Title>
-          <Text className={styles.heroSub}>
+          <Text className={styles.heroSub} c="rgba(255, 255, 255, 0.85)" fw={400} size="lg" mt="lg">
             Enter a space designed for deep focus. Mastery of Mandarin is not a
             sprint, but a path through a quiet grove.
           </Text>
