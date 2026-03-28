@@ -1,0 +1,373 @@
+/* ── Root layout ────────────────────────────────────────── */
+.root {
+  display: flex;
+  min-height: 100vh;
+  background-color: var(--bb-surface);
+}
+
+/* ── Left branding panel ────────────────────────────────── */
+.leftPanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 52%;
+  min-height: 100vh;
+  padding: 3rem 4rem;
+  overflow: hidden;
+  /* Dark forest gradient sits on top; image bleeds through at ~15% */
+  background-color: #154212;
+  background-image:
+    linear-gradient(145deg,
+      rgba(21, 66, 18, 0.88) 0%,
+      rgba(45, 90, 39, 0.82) 40%,
+      rgba(26, 74, 28, 0.86) 70%,
+      rgba(13, 47, 15, 0.92) 100%),
+    url('/img/bamboo-login.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+}
+
+/* Decorative concentric rings (bamboo motif) */
+.ringOuter,
+.ringInner {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+
+.ringOuter {
+  width: 700px;
+  height: 700px;
+  bottom: -220px;
+  right: -200px;
+}
+
+.ringInner {
+  width: 480px;
+  height: 480px;
+  bottom: -100px;
+  right: -80px;
+  border-color: rgba(255, 255, 255, 0.04);
+  background: radial-gradient(ellipse at center,
+      rgba(161, 212, 148, 0.08) 0%,
+      transparent 70%);
+}
+
+/* Logo row */
+.logoArea {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  z-index: 1;
+}
+
+.logoMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #a1d494;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.logoText {
+  font-family: var(--font-manrope), Manrope, sans-serif;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+}
+
+.logoWords {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.logoTextZh {
+  font-family: var(--font-noto-sc), 'Noto Sans SC', sans-serif !important;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.22em;
+  line-height: 1;
+}
+
+/* Hero content */
+.heroContent {
+  z-index: 1;
+  max-width: 520px;
+  position: relative;
+}
+
+/* Large decorative watermark: 竹子大脑 */
+.heroWatermark {
+  position: absolute;
+  top: -2.5rem;
+  left: -1rem;
+  font-family: var(--font-noto-sc), 'Noto Sans SC', sans-serif;
+  font-size: clamp(5rem, 9vw, 8.5rem);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.1);
+  letter-spacing: 0.08em;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.heroLabel {
+  font-family: var(--font-noto-sc), 'Noto Sans SC', sans-serif !important;
+  font-size: 0.875rem;
+  color: #a1d494;
+  letter-spacing: 0.18em;
+  margin-bottom: 1rem;
+  opacity: 0.9;
+}
+
+.heroTitle {
+  font-family: var(--font-manrope), Manrope, sans-serif !important;
+  font-size: clamp(2.25rem, 3.5vw, 3.25rem);
+  font-weight: 800;
+  line-height: 1.12;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  margin-bottom: 1.25rem;
+}
+
+.heroTitleAccent {
+  color: #a1d494;
+}
+
+.heroSub {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.62);
+  max-width: 480px;
+}
+
+.leftFooter {
+  z-index: 1;
+}
+
+/* ── Right form panel ───────────────────────────────────── */
+.rightPanel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 2rem;
+  background-color: var(--bb-surface-container-low);
+}
+
+.formCard {
+  width: 100%;
+  max-width: 460px;
+  padding: 2.5rem 2.75rem;
+  background: var(--bb-surface-container-lowest) !important;
+  border: 1px solid var(--bb-surface-container-high) !important;
+}
+
+/* Tabs */
+.tabs {
+  width: 100%;
+}
+
+.tabList {
+  background: var(--bb-surface-container) !important;
+  border-radius: 10px !important;
+  padding: 4px !important;
+  gap: 4px !important;
+  border: none !important;
+}
+
+.tab {
+  font-family: var(--font-inter), Inter, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--bb-on-surface-variant) !important;
+  border-radius: 8px !important;
+  border: none !important;
+  padding: 0.5rem 1rem !important;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.tab[data-active] {
+  background: var(--bb-surface-container-lowest) !important;
+  color: var(--bb-primary) !important;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(21, 66, 18, 0.12);
+}
+
+.tab:hover:not([data-active]) {
+  background: rgba(21, 66, 18, 0.05) !important;
+  color: var(--bb-on-surface) !important;
+}
+
+.tabPanel {
+  padding-top: 0 !important;
+}
+
+/* Form titles */
+.formTitle {
+  font-family: var(--font-manrope), Manrope, sans-serif !important;
+  font-size: 1.5rem !important;
+  font-weight: 700 !important;
+  color: var(--bb-on-surface) !important;
+  letter-spacing: -0.02em;
+}
+
+.formSub {
+  color: var(--bb-on-surface-variant) !important;
+  margin-top: 0.375rem;
+  line-height: 1.5;
+}
+
+/* Social button */
+.socialBtn {
+  border: 1px solid var(--bb-outline-variant) !important;
+  background: var(--bb-surface-container-lowest) !important;
+  color: var(--bb-on-surface) !important;
+  border-radius: 10px !important;
+  font-weight: 500 !important;
+  height: 44px !important;
+  transition: all 0.18s ease;
+}
+
+.socialBtn:hover {
+  background: var(--bb-surface-container-low) !important;
+  border-color: var(--bb-outline) !important;
+}
+
+/* Divider */
+.dividerLabel {
+  font-size: 0.75rem !important;
+  color: var(--bb-on-surface-variant) !important;
+}
+
+/* Inputs */
+.inputLabel {
+  font-size: 0.8125rem !important;
+  font-weight: 500 !important;
+  color: var(--bb-on-surface-variant) !important;
+  margin-bottom: 0.375rem;
+}
+
+.input {
+  background: var(--bb-surface-container-low) !important;
+  border: 1px solid var(--bb-outline-variant) !important;
+  border-radius: 10px !important;
+  color: var(--bb-on-surface) !important;
+  font-size: 0.9rem !important;
+  height: 44px !important;
+  padding-left: 14px !important;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.input:focus,
+.input:focus-within {
+  border-color: var(--bb-primary-container) !important;
+  box-shadow: 0 0 0 3px rgba(45, 90, 39, 0.12) !important;
+  background: var(--bb-surface-container-lowest) !important;
+}
+
+/* Primary CTA button */
+.primaryBtn {
+  background: linear-gradient(135deg, #0a220a 0%, #154212 100%) !important;
+  color: #ffffff !important;
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  font-size: 0.9375rem !important;
+  height: 46px !important;
+  border: none !important;
+  letter-spacing: 0.01em;
+  transition: all 0.2s ease;
+}
+
+.primaryBtn:hover {
+  background: linear-gradient(135deg, #154212 0%, #23501e 100%) !important;
+  opacity: 1;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(10, 34, 10, 0.25);
+}
+
+.primaryBtn:active {
+  transform: translateY(0);
+}
+
+/* Links */
+.forgotLink {
+  color: var(--bb-secondary) !important;
+  font-size: 0.8125rem !important;
+  text-decoration: none !important;
+}
+
+.forgotLink:hover {
+  color: var(--bb-primary) !important;
+  text-decoration: underline !important;
+}
+
+.switchTabLink {
+  color: var(--bb-primary) !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+}
+
+.switchTabLink:hover {
+  text-decoration: underline !important;
+}
+
+/* Legal footer row */
+.legalRow {
+  border-top: 1px solid var(--bb-surface-container-high);
+}
+
+.legalLink {
+  color: var(--bb-outline) !important;
+  font-size: 0.75rem !important;
+  text-decoration: none !important;
+}
+
+.legalLink:hover {
+  color: var(--bb-on-surface-variant) !important;
+  text-decoration: underline !important;
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .root {
+    flex-direction: column;
+  }
+
+  .leftPanel {
+    width: 100%;
+    min-height: auto;
+    padding: 2.5rem 2rem 3rem;
+  }
+
+  .heroTitle {
+    font-size: 2.25rem;
+  }
+
+  .heroContent {
+    margin-top: 2rem;
+  }
+
+  .rightPanel {
+    padding: 2rem 1.25rem 3rem;
+  }
+
+  .formCard {
+    padding: 2rem 1.75rem;
+  }
+}
