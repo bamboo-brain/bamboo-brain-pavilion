@@ -6,3 +6,5 @@ export * from './FileTextIcon';
 export * from './MicIcon';
 export * from './CalendarIcon';
 export * from './MicrosoftIcon';
+export * from './TreeIcon';
+export * from './FireIcon';
