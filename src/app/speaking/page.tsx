@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Title,
@@ -13,21 +14,18 @@ import {
   rem,
   SimpleGrid,
   ActionIcon,
-  Avatar,
   Table,
   ScrollArea,
   TextInput,
   Tooltip,
   Progress,
+  Pagination,
 } from '@mantine/core';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
-  IconPlayerPlayFilled,
   IconHistory,
   IconClock,
   IconChevronRight,
-  IconArrowLeft,
-  IconVolume,
   IconSearch,
 } from '@tabler/icons-react';
 import {
@@ -43,6 +41,7 @@ const SESSIONS = [
 
 export default function SpeakingStudioPage() {
   const router = useRouter();
+  const [activePage, setPage] = useState(1);
 
   return (
     <AppLayout title={<Title order={1} fz={rem(32)} fw={800} c="var(--bb-on-surface)" style={{ letterSpacing: rem(-0.5) }}>Speaking Studio</Title>}>
@@ -165,6 +164,19 @@ export default function SpeakingStudioPage() {
                   </Table.Tbody>
                 </Table>
               </ScrollArea>
+
+              <Stack gap={rem(16)} align="center" mt={rem(16)}>
+                <Pagination
+                  value={activePage}
+                  onChange={setPage}
+                  total={6}
+                  radius="md"
+                  color="var(--bb-primary)"
+                />
+                <Text fz="xs" fw={700} c="var(--bb-outline)">
+                  Showing {(activePage - 1) * 4 + 1} to {Math.min(activePage * 4, 24)} of 24 scholarly dialogues
+                </Text>
+              </Stack>
             </Stack>
           </Card>
         </Stack>
