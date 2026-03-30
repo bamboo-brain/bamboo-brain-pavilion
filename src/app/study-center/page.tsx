@@ -77,9 +77,9 @@ export default function StudyCenterPage() {
         </Group>
       }
     >
-      <SimpleGrid cols={{ base: 1, lg: 4 }} spacing={rem(40)}>
-        {/* Main Section (Spans 3 columns) */}
-        <Box style={{ gridColumn: 'span 3' }}>
+      <SimpleGrid cols={{ base: 1, lg: 3 }} spacing={rem(40)}>
+        {/* Main Section (Spans 2 columns) */}
+        <Box style={{ gridColumn: 'span 2' }}>
           <Stack gap={rem(48)}>
             {/* Performance Stats */}
             <SimpleGrid cols={{ base: 1, md: 3 }} spacing="xl">

@@ -102,9 +102,9 @@ export default function PlannerPage() {
         </Group>
       }
     >
-      <SimpleGrid cols={{ base: 1, lg: 4 }} spacing={rem(40)}>
-        {/* Main Content Area (Spans 3 columns) */}
-        <Box style={{ gridColumn: 'span 3' }}>
+      <SimpleGrid cols={{ base: 1, lg: 3 }} spacing={rem(40)}>
+        {/* Main Content Area (Spans 2 columns) */}
+        <Box style={{ gridColumn: 'span 2' }}>
           <Stack gap={rem(48)}>
             {/* Calendar View */}
             <Card radius={32} p={rem(32)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
