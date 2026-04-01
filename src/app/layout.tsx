@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Manrope, Inter } from 'next/font/google';
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps, createTheme } from '@mantine/core';
+import AuthProvider from '@/components/AuthProvider';
 import '@mantine/core/styles.css';
 import './globals.css';
 
@@ -75,9 +76,11 @@ export default function RootLayout({
         <ColorSchemeScript defaultColorScheme="light" />
       </head>
       <body suppressHydrationWarning={true}>
-        <MantineProvider theme={theme} defaultColorScheme="light">
-          {children}
-        </MantineProvider>
+        <AuthProvider>
+          <MantineProvider theme={theme} defaultColorScheme="light">
+            {children}
+          </MantineProvider>
+        </AuthProvider>
       </body>
     </html>
   );

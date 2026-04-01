@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { signIn } from 'next-auth/react';
 import {
   Box,
   Button,
@@ -143,6 +144,7 @@ export default function LoginPage() {
                     leftSection={<GoogleIcon />}
                     className={styles.socialBtn}
                     size="md"
+                    onClick={() => signIn('google', { callbackUrl: '/dashboard' })}
                   >
                     Google
                   </Button>
@@ -152,6 +154,7 @@ export default function LoginPage() {
                     leftSection={<MicrosoftIcon />}
                     className={styles.socialBtn}
                     size="md"
+                    onClick={() => signIn('azure-ad', { callbackUrl: '/dashboard' })}
                   >
                     Microsoft
                   </Button>
@@ -247,6 +250,7 @@ export default function LoginPage() {
                     leftSection={<GoogleIcon />}
                     className={styles.socialBtn}
                     size="md"
+                    onClick={() => signIn('google', { callbackUrl: '/dashboard' })}
                   >
                     Google
                   </Button>
@@ -256,6 +260,7 @@ export default function LoginPage() {
                     leftSection={<MicrosoftIcon />}
                     className={styles.socialBtn}
                     size="md"
+                    onClick={() => signIn('azure-ad', { callbackUrl: '/dashboard' })}
                   >
                     Microsoft
                   </Button>

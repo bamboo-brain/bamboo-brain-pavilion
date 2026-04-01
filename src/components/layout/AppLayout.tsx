@@ -31,6 +31,8 @@ import {
 } from '@tabler/icons-react';
 import { NotificationList } from '@/components/dashboard/NotificationList';
 import { useRouter, usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
+import { IconLogout } from '@tabler/icons-react';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: <IconChartLine size={20} />, path: '/dashboard' },
@@ -187,15 +189,38 @@ export function AppLayout({ children, title }: { children: React.ReactNode; titl
                     <NotificationList />
                   </Popover.Dropdown>
                 </Popover>
-                <ActionIcon
-                  variant="subtle"
-                  radius="xl"
-                  size="xl"
-                  color="var(--bb-outline)"
-                  styles={{ root: { backgroundColor: 'var(--bb-surface-container-lowest)', color: 'var(--bb-on-surface-variant)' } }}
-                >
-                  <IconUser size={22} />
-                </ActionIcon>
+                <Popover position="bottom-end" shadow="lg" radius={rem(16)} offset={12} transitionProps={{ transition: 'pop-top-right' }}>
+                  <Popover.Target>
+                    <ActionIcon
+                      variant="subtle"
+                      radius="xl"
+                      size="xl"
+                      color="var(--bb-outline)"
+                      styles={{ root: { backgroundColor: 'var(--bb-surface-container-lowest)', color: 'var(--bb-on-surface-variant)' } }}
+                    >
+                      <IconUser size={22} />
+                    </ActionIcon>
+                  </Popover.Target>
+                  <Popover.Dropdown p={rem(8)} style={{ border: 'none', backgroundColor: 'var(--bb-surface-container-lowest)', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', minWidth: rem(180) }}>
+                    <UnstyledButton
+                      onClick={() => signOut({ callbackUrl: '/login' })}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: rem(10),
+                        width: '100%',
+                        padding: `${rem(10)} ${rem(14)}`,
+                        borderRadius: rem(10),
+                        color: 'var(--mantine-color-red-6)',
+                        fontSize: rem(14),
+                        fontWeight: 500,
+                      }}
+                    >
+                      <IconLogout size={18} />
+                      Sign out
+                    </UnstyledButton>
+                  </Popover.Dropdown>
+                </Popover>
               </Group>
             </Group>
           </Group>
