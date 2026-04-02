@@ -85,19 +85,56 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
   },
   callbacks: {
-    async jwt({ token, user, trigger, session }) {
-      // On first sign-in, populate from user object
-      if (user) {
+    async jwt({ token, user, account, trigger, session }) {
+      // On first sign-in via credentials, populate from user object
+      if (user && (!account || account.provider === 'credentials')) {
         const u = user as typeof user & { accessToken?: string; hskLevel?: number; isOnboardingComplete?: boolean };
         token.sub = user.id;
         token.accessToken = u.accessToken;
         token.hskLevel = u.hskLevel;
         token.isOnboardingComplete = u.isOnboardingComplete;
       }
+
+      // On first sign-in via OAuth (Google / Azure AD), upsert the user in the backend
+      if (account && (account.provider === 'google' || account.provider === 'azure-ad')) {
+        try {
+          const res = await fetch(`${API_URL}/api/users/upsert-oauth`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: token.email,
+              name: token.name,
+              image: token.picture ?? null,
+              provider: account.provider,
+            }),
+          });
+
+          if (res.ok) {
+            const data: {
+              token?: string;
+              user?: { id: string; hskLevel: number; isOnboardingComplete: boolean };
+            } = await res.json();
+
+            if (data.user) {
+              token.sub = data.user.id;
+              token.hskLevel = data.user.hskLevel;
+              token.isOnboardingComplete = data.user.isOnboardingComplete;
+            }
+            if (data.token) {
+              token.accessToken = data.token;
+            }
+          }
+        } catch {
+          // Non-fatal: token will be missing hskLevel/isOnboardingComplete
+          // which the middleware will treat as incomplete onboarding
+        }
+      }
+
       // When session is updated client-side via update()
       if (trigger === 'update' && session?.isOnboardingComplete !== undefined) {
         token.isOnboardingComplete = session.isOnboardingComplete;
       }
+
       return token;
     },
     async session({ session, token }) {
