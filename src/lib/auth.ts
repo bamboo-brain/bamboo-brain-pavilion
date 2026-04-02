@@ -12,6 +12,7 @@ declare module 'next-auth' {
       email?: string | null;
       image?: string | null;
       hskLevel?: number | null;
+      isOnboardingComplete?: boolean;
     };
     accessToken?: string;
   }
@@ -22,6 +23,7 @@ declare module 'next-auth/jwt' {
     sub?: string;
     accessToken?: string;
     hskLevel?: number | null;
+    isOnboardingComplete?: boolean;
   }
 }
 
@@ -38,7 +40,7 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const res = await fetch(`https://${API_URL}/api/auth/login`, {
+        const res = await fetch(`${API_URL}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -52,7 +54,7 @@ export const authOptions: NextAuthOptions = {
         const data: {
           message: string;
           token: string;
-          user: { id: string; name: string; email: string; image: string | null; hskLevel: number };
+          user: { id: string; name: string; email: string; image: string | null; hskLevel: number; isOnboardingComplete: boolean };
         } = await res.json();
 
         return {
@@ -62,6 +64,7 @@ export const authOptions: NextAuthOptions = {
           image: data.user.image,
           accessToken: data.token,
           hskLevel: data.user.hskLevel,
+          isOnboardingComplete: data.user.isOnboardingComplete,
         };
       },
     }),
@@ -82,11 +85,18 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
+      // On first sign-in, populate from user object
       if (user) {
+        const u = user as typeof user & { accessToken?: string; hskLevel?: number; isOnboardingComplete?: boolean };
         token.sub = user.id;
-        token.accessToken = (user as typeof user & { accessToken?: string }).accessToken;
-        token.hskLevel = (user as typeof user & { hskLevel?: number }).hskLevel;
+        token.accessToken = u.accessToken;
+        token.hskLevel = u.hskLevel;
+        token.isOnboardingComplete = u.isOnboardingComplete;
+      }
+      // When session is updated client-side via update()
+      if (trigger === 'update' && session?.isOnboardingComplete !== undefined) {
+        token.isOnboardingComplete = session.isOnboardingComplete;
       }
       return token;
     },
@@ -94,6 +104,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.sub ?? '';
         session.user.hskLevel = token.hskLevel;
+        session.user.isOnboardingComplete = token.isOnboardingComplete;
       }
       session.accessToken = token.accessToken;
       return session;

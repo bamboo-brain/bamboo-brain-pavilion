@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { useDisclosure } from '@mantine/hooks';
 import {
   Title,
@@ -76,15 +77,30 @@ const TODAY_TASKS = [
   },
 ];
 
+const HSK_LABELS: Record<number, { label: string; hanzi: string }> = {
+  0: { label: 'Absolute Beginner', hanzi: '初级' },
+  1: { label: 'HSK Level 1',       hanzi: '一级' },
+  2: { label: 'HSK Level 2',       hanzi: '二级' },
+  3: { label: 'HSK Level 3',       hanzi: '三级' },
+  4: { label: 'HSK Level 4',       hanzi: '四级' },
+  5: { label: 'HSK Level 5',       hanzi: '五级' },
+  6: { label: 'HSK Level 6',       hanzi: '六级' },
+};
+
 export default function DashboardPage() {
+  const { data: session } = useSession();
   const [streakDays] = useState([true, true, true, true, false, false, false]);
   const [taskModalOpened, { open: openTaskModal, close: closeTaskModal }] = useDisclosure(false);
+
+  const firstName = session?.user?.name?.split(' ')[0] ?? 'Scholar';
+  const hskLevel = session?.user?.hskLevel ?? 1;
+  const hsk = HSK_LABELS[hskLevel] ?? HSK_LABELS[1];
 
   return (
     <AppLayout
       title={
         <Title order={1} fz={rem(32)} fw={800} c="var(--bb-on-surface)" style={{ letterSpacing: rem(-0.5) }}>
-          Welcome back, Alex.
+          Welcome back, {firstName}.
         </Title>
       }
     >
@@ -134,7 +150,7 @@ export default function DashboardPage() {
 
                 <Stack gap={rem(12)}>
                   <Title order={2} fz={rem(36)} fw={800} c="var(--bb-on-surface)">
-                    HSK Level 4 <span className="hanzi" style={{ fontSize: rem(32), marginLeft: rem(8) }}>四级</span>
+                    {hsk.label} <span className="hanzi" style={{ fontSize: rem(32), marginLeft: rem(8) }}>{hsk.hanzi}</span>
                   </Title>
                   <Text fz={rem(18)} c="var(--bb-on-surface-variant)" lh={1.6} maw={600} fw={500}>
                     You're 65% through the "Intermediate Narrative" module. Keep pushing to reach Level 5 proficiency.

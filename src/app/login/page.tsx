@@ -70,7 +70,7 @@ export default function LoginPage() {
     setSignupLoading(true);
     setSignupError(null);
     try {
-      const res = await fetch(`https://${process.env.NEXT_PUBLIC_API_URL}/api/auth/register`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: values.name, email: values.email, password: values.password }),
@@ -81,11 +81,11 @@ export default function LoginPage() {
         setSignupLoading(false);
         return;
       }
-      // Auto sign-in after successful registration
+      // Auto sign-in after successful registration, send to onboarding
       const result = await signIn('credentials', {
         email: values.email,
         password: values.password,
-        callbackUrl: '/dashboard',
+        callbackUrl: '/onboarding',
         redirect: false,
       });
       setSignupLoading(false);

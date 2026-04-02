@@ -1,27 +1,30 @@
 "use client";
 
-import { Suspense } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import styles from "./ready.module.css";
 
 const LEVELS = [
-  { id: "absolute", title: "Absolute Beginner", desc: "No prior knowledge of Mandarin" },
-  { id: "foundation", title: "Foundation", desc: "Basic phrases and essential characters." },
-  { id: "elementary", title: "Elementary", desc: "Daily interactions and sentence patterns." },
-  { id: "intermediate", title: "Intermediate", desc: "Complex thoughts and social topics." },
-  { id: "proficient", title: "Proficient", desc: "Professional dialogue and news media." },
-  { id: "master", title: "Master", desc: "Literature, history, and deep culture." },
-  { id: "native", title: "Native-Like", desc: "Full fluency and academic research." },
+  { id: "absolute",    title: "Absolute Beginner", desc: "No prior knowledge of Mandarin",         hskNumber: 0 },
+  { id: "foundation",  title: "Foundation",         desc: "Basic phrases and essential characters.", hskNumber: 1 },
+  { id: "elementary",  title: "Elementary",         desc: "Daily interactions and sentence patterns.", hskNumber: 2 },
+  { id: "intermediate",title: "Intermediate",       desc: "Complex thoughts and social topics.",    hskNumber: 3 },
+  { id: "proficient",  title: "Proficient",         desc: "Professional dialogue and news media.",  hskNumber: 4 },
+  { id: "master",      title: "Master",             desc: "Literature, history, and deep culture.", hskNumber: 5 },
+  { id: "native",      title: "Native-Like",        desc: "Full fluency and academic research.",    hskNumber: 6 },
 ];
 
 const INTERESTS = [
-  { id: "business", title: "Business" },
-  { id: "travel", title: "Travel" },
-  { id: "calligraphy", title: "Calligraphy" },
-  { id: "hsk", title: "HSK Prep" },
-  { id: "history", title: "History" },
+  { id: "business",   title: "Business" },
+  { id: "travel",     title: "Travel" },
+  { id: "calligraphy",title: "Calligraphy" },
+  { id: "hsk",        title: "HSK Prep" },
+  { id: "history",    title: "History" },
   { id: "literature", title: "Literature" },
 ];
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 function getInterestIcon(id: string) {
   switch (id) {
@@ -44,13 +47,74 @@ function getInterestIcon(id: string) {
 function ReadyPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session, update } = useSession();
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const levelParam = searchParams.get("level") || "intermediate";
-  const interestParams = searchParams.getAll("interest").length > 0 ? searchParams.getAll("interest") : ["business", "history"];
+  const interestParams = searchParams.getAll("interest").length > 0
+    ? searchParams.getAll("interest")
+    : ["business", "history"];
+  const gcalEnabled = searchParams.get("gcal") === "1";
+  const microsoftEnabled = searchParams.get("microsoft") === "1";
 
   const selectedLevel = LEVELS.find(l => l.id === levelParam);
+  const displayedInterests = interestParams.slice(0, 2);
 
-  const displayedInterests = interestParams.slice(0, 2); // Show up to 2 for layout
+  async function callCompleteApi() {
+    const res = await fetch(`${API_URL}/api/onboarding/complete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.accessToken}`,
+      },
+      body: JSON.stringify({
+        hskLevel: selectedLevel?.hskNumber ?? 0,
+        isGcalSyncEnabled: gcalEnabled,
+        isMicrosoftAccountEnabled: microsoftEnabled,
+        areaOfInterests: interestParams,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to complete onboarding');
+  }
+
+  async function callSkipApi() {
+    const res = await fetch(`${API_URL}/api/onboarding/skip`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.accessToken}`,
+      },
+    });
+    if (!res.ok) throw new Error('Failed to skip onboarding');
+  }
+
+  const handleEnter = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await callCompleteApi();
+      await update({ isOnboardingComplete: true });
+      router.push('/dashboard');
+    } catch {
+      setError('Something went wrong. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  const handleSkip = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await callSkipApi();
+      await update({ isOnboardingComplete: true });
+      router.push('/dashboard');
+    } catch {
+      setError('Something went wrong. Please try again.');
+      setLoading(false);
+    }
+  };
 
   return (
     <div className={styles.container}>
@@ -135,20 +199,28 @@ function ReadyPageContent() {
               </div>
             </div>
 
+            {error && (
+              <p style={{ color: 'red', fontSize: '0.85rem', marginBottom: '0.75rem', textAlign: 'center' }}>
+                {error}
+              </p>
+            )}
+
             <div className={styles.actionButtons}>
               <button
-                onClick={() => router.push('/')}
+                onClick={handleEnter}
+                disabled={loading}
                 className={styles.enterButton}
               >
-                Enter the Pavilion
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12h14m-7-7 7 7-7 7" /></svg>
+                {loading ? 'Setting up your grove…' : 'Enter the Pavilion'}
+                {!loading && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12h14m-7-7 7 7-7 7" /></svg>}
               </button>
 
               <button
-                onClick={() => router.push(`/onboarding/interests?${searchParams.toString()}`)}
+                onClick={handleSkip}
+                disabled={loading}
                 className={styles.adjustButton}
               >
-                Adjust Selections
+                Skip onboarding
               </button>
             </div>
           </div>

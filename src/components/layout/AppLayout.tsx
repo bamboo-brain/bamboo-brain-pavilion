@@ -31,7 +31,7 @@ import {
 } from '@tabler/icons-react';
 import { NotificationList } from '@/components/dashboard/NotificationList';
 import { useRouter, usePathname } from 'next/navigation';
-import { signOut } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
 import { IconLogout } from '@tabler/icons-react';
 
 const NAV_ITEMS = [
@@ -46,6 +46,11 @@ const NAV_ITEMS = [
 export function AppLayout({ children, title }: { children: React.ReactNode; title?: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { data: session } = useSession();
+
+  const displayName = session?.user?.name ?? 'Scholar';
+  const hskLevel = session?.user?.hskLevel;
+  const hskLabel = hskLevel != null ? `HSK Level ${hskLevel}` : 'Scholar';
 
   return (
     <AppShell
@@ -132,14 +137,14 @@ export function AppLayout({ children, title }: { children: React.ReactNode; titl
               }}
             >
               <Avatar color="dark" radius="xl" size="md">
-                A
+                {displayName.charAt(0).toUpperCase()}
               </Avatar>
               <Box style={{ flex: 1, minWidth: 0 }}>
                 <Text fw={700} fz="xs" c="var(--bb-on-surface)" truncate>
-                  Scholar Alex
+                  {displayName}
                 </Text>
                 <Text fz={rem(11)} c="var(--bb-outline)" fw={600}>
-                  HSK Level 4
+                  {hskLabel}
                 </Text>
               </Box>
             </Group>
