@@ -97,7 +97,7 @@ function ReadyPageContent() {
     setError(null);
     try {
       await callCompleteApi();
-      await update({ isOnboardingComplete: true });
+      await update({ isOnboardingComplete: true, hskLevel: selectedLevel?.hskNumber ?? 0 });
       router.push('/dashboard');
     } catch {
       setError('Something went wrong. Please try again.');

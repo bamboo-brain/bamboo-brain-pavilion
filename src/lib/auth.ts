@@ -97,15 +97,6 @@ export const authOptions: NextAuthOptions = {
 
       // On first sign-in via OAuth (Google / Azure AD), upsert the user in the backend
       if (account && (account.provider === 'google' || account.provider === 'azure-ad')) {
-        // Guard against missing API_URL
-        if (!API_URL) {
-          console.error('[NextAuth] API_URL is undefined — check environment variables');
-          throw new Error('API_URL is not configured');
-        }
-
-        console.log('[NextAuth] API_URL:', API_URL);
-        console.log('[NextAuth] upserting:', token.email);
-
         const res = await fetch(`${API_URL}/api/users/upsert-oauth`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -134,8 +125,13 @@ export const authOptions: NextAuthOptions = {
       }
 
       // When session is updated client-side via update()
-      if (trigger === 'update' && session?.isOnboardingComplete !== undefined) {
-        token.isOnboardingComplete = session.isOnboardingComplete;
+      if (trigger === 'update') {
+        if (session?.isOnboardingComplete !== undefined) {
+          token.isOnboardingComplete = session.isOnboardingComplete;
+        }
+        if (session?.hskLevel !== undefined) {
+          token.hskLevel = session.hskLevel;
+        }
       }
 
       return token;
