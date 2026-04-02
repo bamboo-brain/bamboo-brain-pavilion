@@ -52,14 +52,14 @@ export const authOptions: NextAuthOptions = {
         const data: {
           message: string;
           token: string;
-          user: { id: string; name: string; email: string; hskLevel: number };
+          user: { id: string; name: string; email: string; image: string | null; hskLevel: number };
         } = await res.json();
 
         return {
           id: data.user.id,
           name: data.user.name,
           email: data.user.email,
-          image: null,
+          image: data.user.image,
           accessToken: data.token,
           hskLevel: data.user.hskLevel,
         };
