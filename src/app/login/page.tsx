@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
+import { Alert } from '@mantine/core';
+import { IconAlertCircle } from '@tabler/icons-react';
 import {
   Box,
   Button,
@@ -25,6 +27,10 @@ import styles from './login.module.css';
 /* ── Main page ── */
 export default function LoginPage() {
   const [activeTab, setActiveTab] = useState<string | null>('login');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [signupError, setSignupError] = useState<string | null>(null);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [signupLoading, setSignupLoading] = useState(false);
 
   const loginForm = useForm({
     initialValues: { email: '', password: '' },
@@ -42,6 +48,57 @@ export default function LoginPage() {
       password: (v) => (v.length >= 8 ? null : 'Password must be at least 8 characters'),
     },
   });
+
+  async function handleLogin(values: { email: string; password: string }) {
+    setLoginLoading(true);
+    setLoginError(null);
+    const result = await signIn('credentials', {
+      email: values.email,
+      password: values.password,
+      callbackUrl: '/dashboard',
+      redirect: false,
+    });
+    setLoginLoading(false);
+    if (result?.error) {
+      setLoginError('Invalid email or password. Please try again.');
+    } else if (result?.url) {
+      window.location.href = result.url;
+    }
+  }
+
+  async function handleSignup(values: { name: string; email: string; password: string }) {
+    setSignupLoading(true);
+    setSignupError(null);
+    try {
+      const res = await fetch(`https://${process.env.NEXT_PUBLIC_API_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: values.name, email: values.email, password: values.password }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSignupError(data?.message ?? 'Registration failed. Please try again.');
+        setSignupLoading(false);
+        return;
+      }
+      // Auto sign-in after successful registration
+      const result = await signIn('credentials', {
+        email: values.email,
+        password: values.password,
+        callbackUrl: '/dashboard',
+        redirect: false,
+      });
+      setSignupLoading(false);
+      if (result?.error) {
+        setSignupError('Account created but sign-in failed. Please sign in manually.');
+      } else if (result?.url) {
+        window.location.href = result.url;
+      }
+    } catch {
+      setSignupLoading(false);
+      setSignupError('Network error. Please try again.');
+    }
+  }
 
   return (
     <main className={styles.root}>
@@ -167,11 +224,13 @@ export default function LoginPage() {
                   classNames={{ label: styles.dividerLabel }}
                 />
 
-                <form
-                  onSubmit={loginForm.onSubmit((values) => {
-                    console.log('Login:', values);
-                  })}
-                >
+                {loginError && (
+                  <Alert icon={<IconAlertCircle size={16} />} color="red" mt="md" radius="md">
+                    {loginError}
+                  </Alert>
+                )}
+
+                <form onSubmit={loginForm.onSubmit(handleLogin)}>
                   <Stack gap="md">
                     <TextInput
                       id="login-email"
@@ -211,6 +270,7 @@ export default function LoginPage() {
                       fullWidth
                       size="md"
                       mt="xs"
+                      loading={loginLoading}
                     >
                       Enter the Grove
                     </Button>
@@ -273,11 +333,13 @@ export default function LoginPage() {
                   classNames={{ label: styles.dividerLabel }}
                 />
 
-                <form
-                  onSubmit={signupForm.onSubmit((values) => {
-                    console.log('Signup:', values);
-                  })}
-                >
+                {signupError && (
+                  <Alert icon={<IconAlertCircle size={16} />} color="red" mt="md" radius="md">
+                    {signupError}
+                  </Alert>
+                )}
+
+                <form onSubmit={signupForm.onSubmit(handleSignup)}>
                   <Stack gap="md">
                     <TextInput
                       id="signup-name"
@@ -317,6 +379,7 @@ export default function LoginPage() {
                       fullWidth
                       size="md"
                       mt="xs"
+                      loading={signupLoading}
                     >
                       Join the Pavilion
                     </Button>
