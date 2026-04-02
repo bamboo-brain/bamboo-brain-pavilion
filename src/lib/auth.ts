@@ -112,7 +112,7 @@ export const authOptions: NextAuthOptions = {
           body: JSON.stringify({
             email: token.email,
             name: token.name,
-            image: token.picture ?? null,
+            image: token.picture ?? '',
             provider: account.provider,
           }),
         });
