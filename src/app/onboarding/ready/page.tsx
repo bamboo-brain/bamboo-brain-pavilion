@@ -63,11 +63,12 @@ function ReadyPageContent() {
   const displayedInterests = interestParams.slice(0, 2);
 
   async function callCompleteApi() {
+    if (!session?.accessToken) throw new Error('No access token — please sign in again.');
     const res = await fetch(`${API_URL}/api/onboarding/complete`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.accessToken}`,
+        'Authorization': `Bearer ${session.accessToken}`,
       },
       body: JSON.stringify({
         hskLevel: selectedLevel?.hskNumber ?? 0,
@@ -80,11 +81,12 @@ function ReadyPageContent() {
   }
 
   async function callSkipApi() {
+    if (!session?.accessToken) throw new Error('No access token — please sign in again.');
     const res = await fetch(`${API_URL}/api/onboarding/skip`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.accessToken}`,
+        'Authorization': `Bearer ${session.accessToken}`,
       },
     });
     if (!res.ok) throw new Error('Failed to skip onboarding');

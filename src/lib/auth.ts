@@ -97,37 +97,31 @@ export const authOptions: NextAuthOptions = {
 
       // On first sign-in via OAuth (Google / Azure AD), upsert the user in the backend
       if (account && (account.provider === 'google' || account.provider === 'azure-ad')) {
-        try {
-          const res = await fetch(`${API_URL}/api/users/upsert-oauth`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: token.email,
-              name: token.name,
-              image: token.picture ?? null,
-              provider: account.provider,
-            }),
-          });
+        const res = await fetch(`${API_URL}/api/users/upsert-oauth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: token.email,
+            name: token.name,
+            image: token.picture ?? null,
+            provider: account.provider,
+          }),
+        });
 
-          if (res.ok) {
-            const data: {
-              token?: string;
-              user?: { id: string; hskLevel: number; isOnboardingComplete: boolean };
-            } = await res.json();
-
-            if (data.user) {
-              token.sub = data.user.id;
-              token.hskLevel = data.user.hskLevel;
-              token.isOnboardingComplete = data.user.isOnboardingComplete;
-            }
-            if (data.token) {
-              token.accessToken = data.token;
-            }
-          }
-        } catch {
-          // Non-fatal: token will be missing hskLevel/isOnboardingComplete
-          // which the middleware will treat as incomplete onboarding
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          throw new Error(`upsert-oauth failed [${res.status}]: ${body}`);
         }
+
+        const data: {
+          token: string;
+          user: { id: string; hskLevel: number; isOnboardingComplete: boolean };
+        } = await res.json();
+
+        token.sub = data.user.id;
+        token.hskLevel = data.user.hskLevel;
+        token.isOnboardingComplete = data.user.isOnboardingComplete;
+        token.accessToken = data.token;
       }
 
       // When session is updated client-side via update()
