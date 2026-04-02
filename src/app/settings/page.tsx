@@ -32,8 +32,14 @@ import {
   IconChevronRight,
   IconCircleCheckFilled,
 } from '@tabler/icons-react';
+import { useSession } from 'next-auth/react';
 
 export default function SettingsPage() {
+  const { data: session } = useSession();
+  const name = session?.user?.name ?? 'Scholar';
+  const email = session?.user?.email ?? '—';
+  const image = session?.user?.image ?? null;
+
   return (
     <AppLayout
       title={
@@ -49,11 +55,11 @@ export default function SettingsPage() {
             {/* Profile Overview */}
             <Card radius={32} p={rem(48)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
               <Group gap={rem(32)} align="flex-start" wrap="nowrap">
-                <Avatar size={rem(120)} radius={120} src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop" style={{ border: `${rem(4)} solid var(--bb-primary)` }} />
+                <Avatar size={rem(120)} radius={120} src={image} style={{ border: `${rem(4)} solid var(--bb-primary)` }} />
                 <Stack gap={rem(16)} style={{ flex: 1 }}>
                   <Box>
                     <Group gap="sm" mb={rem(4)}>
-                      <Title order={2} fz={rem(28)} fw={800}>Master Li</Title>
+                      <Title order={2} fz={rem(28)} fw={800}>{name}</Title>
                       <Badge variant="filled" color="var(--bb-primary)" radius="sm" fw={800}>PRO SCHOLAR</Badge>
                     </Group>
                     <Text fz="sm" fw={600} c="var(--bb-on-surface-variant)" lh={1.6}>
@@ -81,13 +87,13 @@ export default function SettingsPage() {
                     <SettingsItem 
                       icon={<IconUserCircle size={20} />} 
                       title="Name & Identification" 
-                      value="Li Wei (Master Li)" 
+                      value={name}
                     />
                     <Divider color="var(--bb-surface-container-low)" mx={rem(16)} />
                     <SettingsItem 
                       icon={<IconSettings size={20} />} 
                       title="Scholar's Email" 
-                      value="li.wei@mandarinate.edu" 
+                      value={email}
                     />
                     <Divider color="var(--bb-surface-container-low)" mx={rem(16)} />
                     <SettingsItem 
