@@ -86,6 +86,23 @@ export async function getDocument(id: string, accessToken: string): Promise<Docu
   return res.json();
 }
 
+export interface DocumentStatus {
+  id: string;
+  extractionStatus: string; // 'pending' | 'analyzing' | 'ready' | 'failed' | 'error'
+  extractionProgress: number;
+  hskLevel: number | null;
+  wordCount: number;
+  tags: string[];
+}
+
+export async function getDocumentStatus(id: string, accessToken: string): Promise<DocumentStatus> {
+  const res = await fetch(`${API_URL}/api/documents/${id}/status`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error('Status check failed');
+  return res.json();
+}
+
 export async function deleteDocument(id: string, accessToken: string): Promise<void> {
   const res = await fetch(`${API_URL}/api/documents/${id}`, {
     method: 'DELETE',

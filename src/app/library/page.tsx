@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { useDebouncedValue } from '@mantine/hooks';
 import {
   Title,
@@ -41,6 +42,7 @@ import {
   uploadDocument,
   listDocuments,
   getDocument,
+  getDocumentStatus,
   deleteDocument,
   type Document,
   type FileTypeFilter,
@@ -87,8 +89,18 @@ function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function extractionStageLabel(progress: number): string {
+  if (progress < 20) return 'Downloading from storage…';
+  if (progress < 50) return 'Extracting text content…';
+  if (progress < 80) return 'Identifying vocabulary with AI…';
+  if (progress < 90) return 'Generating content tags…';
+  if (progress < 100) return 'Calculating HSK level…';
+  return 'Finalizing…';
+}
+
 export default function LibraryPage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const accessToken = session?.accessToken ?? '';
 
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -108,6 +120,12 @@ export default function LibraryPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Tracks a document that was just uploaded and is being processed
+  const [uploadingDoc, setUploadingDoc] = useState<{
+    id: string; fileName: string; progress: number; status: string;
+  } | null>(null);
+  const uploadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -174,6 +192,16 @@ export default function LibraryPage() {
     return () => clearInterval(interval);
   }, [documents, accessToken]);
 
+  // Cleanup poll on unmount
+  useEffect(() => () => { if (uploadPollRef.current) clearInterval(uploadPollRef.current); }, []);
+
+  function refreshList() {
+    tokenCacheRef.current.clear();
+    tokenCacheRef.current.set(1, undefined);
+    prevFilterRef.current = '';
+    setCurrentPage(1);
+  }
+
   async function handleUpload(file: File) {
     if (!accessToken) return;
     if (file.size > MAX_SIZE) {
@@ -183,16 +211,29 @@ export default function LibraryPage() {
     setUploadError(null);
     setUploading(true);
     try {
-      await uploadDocument(file, accessToken);
-      // Refresh list from page 1
-      tokenCacheRef.current.clear();
-      tokenCacheRef.current.set(1, undefined);
-      setCurrentPage(1);
-      prevFilterRef.current = ''; // force refetch
-    } catch (e) {
-      setUploadError(e instanceof Error ? e.message : 'Upload failed');
-    } finally {
+      const doc = await uploadDocument(file, accessToken);
       setUploading(false);
+
+      // Start tracking the extraction progress
+      setUploadingDoc({ id: doc.id, fileName: doc.fileName, progress: 0, status: 'pending' });
+
+      uploadPollRef.current = setInterval(async () => {
+        try {
+          const status = await getDocumentStatus(doc.id, accessToken);
+          setUploadingDoc((prev) =>
+            prev ? { ...prev, progress: status.extractionProgress, status: status.extractionStatus } : null,
+          );
+          if (['ready', 'failed', 'error'].includes(status.extractionStatus)) {
+            clearInterval(uploadPollRef.current!);
+            uploadPollRef.current = null;
+            // Show final state briefly, then refresh the archive
+            setTimeout(() => { setUploadingDoc(null); refreshList(); }, 1800);
+          }
+        } catch { /* ignore transient errors */ }
+      }, 3000);
+    } catch (e) {
+      setUploading(false);
+      setUploadError(e instanceof Error ? e.message : 'Upload failed');
     }
   }
 
@@ -333,6 +374,55 @@ export default function LibraryPage() {
           onChange={handleFileInput}
         />
 
+        {/* Upload Progress Tracker */}
+        {uploadingDoc && (
+          <Card
+            radius={20}
+            p={rem(24)}
+            style={{
+              backgroundColor: 'var(--bb-surface-container-lowest)',
+              border: '1px solid var(--bb-surface-container)',
+            }}
+          >
+            <Group wrap="nowrap" align="center" gap={rem(20)}>
+              <Box
+                p={rem(12)}
+                style={{ backgroundColor: 'var(--bb-surface-container)', borderRadius: 12, display: 'flex', flexShrink: 0 }}
+              >
+                <IconUpload size={20} color="var(--bb-primary)" />
+              </Box>
+              <Stack gap={rem(6)} style={{ flex: 1, minWidth: 0 }}>
+                <Group justify="space-between" wrap="nowrap">
+                  <Text fw={700} fz="sm" truncate>{uploadingDoc.fileName}</Text>
+                  {['failed', 'error'].includes(uploadingDoc.status) ? (
+                    <Badge color="red" variant="light" size="sm" radius="sm" fw={800}>Failed</Badge>
+                  ) : uploadingDoc.status === 'ready' ? (
+                    <Badge color="green" variant="light" size="sm" radius="sm" fw={800}>Ready</Badge>
+                  ) : (
+                    <Text fz="xs" fw={700} c="var(--bb-primary)">{uploadingDoc.progress}%</Text>
+                  )}
+                </Group>
+                {['failed', 'error'].includes(uploadingDoc.status) ? (
+                  <Group gap={rem(6)}>
+                    <IconAlertCircleFilled size={14} color="red" />
+                    <Text fz="xs" c="red" fw={600}>Extraction failed. The file may be unreadable.</Text>
+                  </Group>
+                ) : uploadingDoc.status === 'ready' ? (
+                  <Group gap={rem(6)}>
+                    <IconCircleCheckFilled size={14} color="var(--bb-primary)" />
+                    <Text fz="xs" c="var(--bb-primary)" fw={600}>Document ready — loading your archive…</Text>
+                  </Group>
+                ) : (
+                  <>
+                    <Progress value={uploadingDoc.progress} size="xs" color="var(--bb-primary)" radius="xl" animated />
+                    <Text fz="xs" c="var(--bb-outline)" fw={600}>{extractionStageLabel(uploadingDoc.progress)}</Text>
+                  </>
+                )}
+              </Stack>
+            </Group>
+          </Card>
+        )}
+
         {/* The Archive Section */}
         <Stack gap={rem(32)}>
           <Stack gap={rem(4)}>
@@ -421,8 +511,10 @@ export default function LibraryPage() {
                       {documents.map((doc) => (
                         <Table.Tr
                           key={doc.id}
+                          style={{ cursor: 'pointer' }}
                           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bb-surface-container-low)')}
                           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                          onClick={() => router.push(`/library/${doc.id}`)}
                         >
                           <Table.Td>
                             <Group gap="sm">
@@ -473,7 +565,7 @@ export default function LibraryPage() {
                               </Group>
                             )}
                           </Table.Td>
-                          <Table.Td>
+                          <Table.Td onClick={(e) => e.stopPropagation()}>
                             <Menu position="bottom-end" withinPortal>
                               <Menu.Target>
                                 <ActionIcon variant="subtle" color="gray">
