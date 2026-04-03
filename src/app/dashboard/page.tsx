@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { useDisclosure } from '@mantine/hooks';
 import {
   Title,
@@ -16,65 +17,66 @@ import {
   UnstyledButton,
   Badge,
   rem,
+  Skeleton,
 } from '@mantine/core';
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
-  FileTextIcon,
   TreeIcon,
   FireIcon,
 } from '@/components/icons';
 import {
-  IconPlus,
   IconUpload,
   IconChartLine,
   IconClock,
   IconChevronRight,
+  IconFileTypePdf,
+  IconVideo,
+  IconHeadphones,
+  IconFileTypePpt,
 } from '@tabler/icons-react';
+import { listDocuments, type Document } from '@/lib/documents';
 
-// Recent uploads data
-const RECENT_UPLOADS = [
-  {
-    id: 1,
-    name: 'Beijing_Travel_Guide_V2.pdf',
-    added: '2h ago',
-    meta: '142 New Vocab Words',
-    status: 'READY TO STUDY',
-    icon: <FileTextIcon size={20} />,
-  },
-  {
-    id: 2,
-    name: 'Daily_Life_Dialogue.mp4',
-    added: 'Yesterday',
-    meta: 'AI Transcription Active',
-    status: 'EXTRACTING...',
-    icon: <IconUpload size={20} />,
-  },
-];
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  if (hours < 1) return 'Just now';
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'Yesterday';
+  return `${days} days ago`;
+}
+
+function docIcon(fileType: string) {
+  if (fileType === 'video') return <IconVideo size={20} />;
+  if (fileType === 'audio') return <IconHeadphones size={20} />;
+  if (fileType === 'ppt')   return <IconFileTypePpt size={20} />;
+  return <IconFileTypePdf size={20} />;
+}
+
+function docMeta(doc: Document): string {
+  if (doc.extractionStatus === 'ready') {
+    return doc.extractedWords.length > 0
+      ? `${doc.extractedWords.length} vocab words extracted`
+      : 'Ready to study';
+  }
+  if (doc.extractionStatus === 'analyzing') return 'AI Extraction Active';
+  if (doc.extractionStatus === 'pending')   return 'Queued for extraction';
+  return 'Extraction error';
+}
+
+function docStatus(doc: Document): { label: string; color: string } {
+  if (doc.extractionStatus === 'ready') return { label: 'READY TO STUDY', color: 'green' };
+  if (doc.extractionStatus === 'analyzing' || doc.extractionStatus === 'pending')
+    return { label: 'EXTRACTING...', color: 'blue' };
+  return { label: 'ERROR', color: 'red' };
+}
 
 // Today's tasks data
 const TODAY_TASKS = [
-  {
-    id: 1,
-    title: 'Morning Calligraphy',
-    time: '08:00 AM - 09:30 AM',
-    icon: '✍️',
-    active: true,
-  },
-  {
-    id: 2,
-    title: 'Reading Practice',
-    time: '1:00 PM - 02:45 PM',
-    icon: '📖',
-    active: false,
-  },
-  {
-    id: 3,
-    title: 'HSK 4 Prep Session',
-    time: '02:00 PM - 03:00 PM',
-    icon: '📝',
-    active: false,
-  },
+  { id: 1, title: 'Morning Calligraphy', time: '08:00 AM - 09:30 AM', icon: '✍️', active: true },
+  { id: 2, title: 'Reading Practice',    time: '1:00 PM - 02:45 PM',  icon: '📖', active: false },
+  { id: 3, title: 'HSK 4 Prep Session',  time: '02:00 PM - 03:00 PM', icon: '📝', active: false },
 ];
 
 const HSK_LABELS: Record<number, { label: string; hanzi: string }> = {
@@ -89,12 +91,25 @@ const HSK_LABELS: Record<number, { label: string; hanzi: string }> = {
 
 export default function DashboardPage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const [streakDays] = useState([true, true, true, true, false, false, false]);
   const [taskModalOpened, { open: openTaskModal, close: closeTaskModal }] = useDisclosure(false);
+  const [recentDocs, setRecentDocs] = useState<Document[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
 
+  const accessToken = session?.accessToken ?? '';
   const firstName = session?.user?.name?.split(' ')[0] ?? 'Scholar';
   const hskLevel = session?.user?.hskLevel ?? 1;
   const hsk = HSK_LABELS[hskLevel] ?? HSK_LABELS[1];
+
+  useEffect(() => {
+    if (!accessToken) return;
+    setLoadingDocs(true);
+    listDocuments(accessToken, { pageSize: 3 })
+      .then((res) => setRecentDocs(res.items))
+      .catch(console.error)
+      .finally(() => setLoadingDocs(false));
+  }, [accessToken]);
 
   return (
     <AppLayout
@@ -248,6 +263,7 @@ export default function DashboardPage() {
               Quick Actions
             </Text>
             <UnstyledButton
+              onClick={() => router.push('/library')}
               style={{
                 height: rem(260),
                 width: '100%',
@@ -286,7 +302,7 @@ export default function DashboardPage() {
               <Text fz={rem(13)} fw={800} c="var(--bb-on-surface-variant)" tt="uppercase" lts={rem(2)}>
                 Recent Uploads
               </Text>
-              <UnstyledButton>
+              <UnstyledButton onClick={() => router.push('/library')}>
                 <Group gap={rem(4)}>
                   <Text fz="xs" fw={800} c="var(--bb-primary)">
                     View All Library
@@ -298,52 +314,63 @@ export default function DashboardPage() {
 
             <Card radius={24} p={rem(16)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
               <Stack gap={rem(4)}>
-                {RECENT_UPLOADS.map((upload) => (
-                  <Group
-                    key={upload.id}
-                    wrap="nowrap"
-                    align="center"
-                    p={rem(16)}
-                    style={{
-                      borderRadius: 16,
-                      transition: 'background-color 0.2s ease',
-                      cursor: 'pointer'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bb-surface-container-low)'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <Box
-                      p={rem(10)}
-                      style={{
-                        backgroundColor: 'var(--bb-surface-container)',
-                        borderRadius: 12,
-                        color: 'var(--bb-on-surface-variant)',
-                        display: 'flex'
-                      }}
-                    >
-                      {upload.icon}
-                    </Box>
-                    <Box style={{ flex: 1, minWidth: 0 }}>
-                      <Text fz={rem(14)} fw={700} c="var(--bb-on-surface)" truncate>
-                        {upload.name}
-                      </Text>
-                      <Text fz={rem(12)} c="var(--bb-outline)" fw={600} mt={rem(2)}>
-                        Added {upload.added} • {upload.meta}
-                      </Text>
-                    </Box>
-                    <Badge
-                      size="xs"
-                      variant="light"
-                      color={upload.status === 'READY TO STUDY' ? 'green' : 'blue'}
-                      radius="sm"
-                      px={rem(8)}
-                      fw={800}
-                      fz={rem(9)}
-                    >
-                      {upload.status}
-                    </Badge>
-                  </Group>
-                ))}
+                {loadingDocs ? (
+                  <>
+                    <Skeleton height={64} radius={16} />
+                    <Skeleton height={64} radius={16} />
+                    <Skeleton height={64} radius={16} />
+                  </>
+                ) : recentDocs.length === 0 ? (
+                  <Text fz="sm" c="var(--bb-outline)" fw={600} ta="center" py={rem(24)}>
+                    No uploads yet. Add your first document!
+                  </Text>
+                ) : (
+                  recentDocs.map((doc) => {
+                    const status = docStatus(doc);
+                    return (
+                      <Group
+                        key={doc.id}
+                        wrap="nowrap"
+                        align="center"
+                        p={rem(16)}
+                        style={{ borderRadius: 16, transition: 'background-color 0.2s ease', cursor: 'pointer' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bb-surface-container-low)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                      >
+                        <Box
+                          p={rem(10)}
+                          style={{
+                            backgroundColor: 'var(--bb-surface-container)',
+                            borderRadius: 12,
+                            color: 'var(--bb-on-surface-variant)',
+                            display: 'flex',
+                          }}
+                        >
+                          {docIcon(doc.fileType)}
+                        </Box>
+                        <Box style={{ flex: 1, minWidth: 0 }}>
+                          <Text fz={rem(14)} fw={700} c="var(--bb-on-surface)" truncate>
+                            {doc.fileName}
+                          </Text>
+                          <Text fz={rem(12)} c="var(--bb-outline)" fw={600} mt={rem(2)}>
+                            Added {timeAgo(doc.uploadedAt)} • {docMeta(doc)}
+                          </Text>
+                        </Box>
+                        <Badge
+                          size="xs"
+                          variant="light"
+                          color={status.color}
+                          radius="sm"
+                          px={rem(8)}
+                          fw={800}
+                          fz={rem(9)}
+                        >
+                          {status.label}
+                        </Badge>
+                      </Group>
+                    );
+                  })
+                )}
               </Stack>
             </Card>
           </Box>

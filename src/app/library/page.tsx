@@ -1,6 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSession } from 'next-auth/react';
+import { useDebouncedValue } from '@mantine/hooks';
 import {
   Title,
   Text,
@@ -12,12 +14,13 @@ import {
   TextInput,
   Badge,
   rem,
-  Tabs,
   ActionIcon,
   Table,
   Progress,
   ScrollArea,
-  Pagination,
+  Menu,
+  Modal,
+  Loader,
 } from '@mantine/core';
 import { AppLayout } from '@/components/layout/AppLayout';
 import {
@@ -30,60 +33,201 @@ import {
   IconDots,
   IconCircleCheckFilled,
   IconAlertCircleFilled,
+  IconTrash,
+  IconChevronLeft,
+  IconChevronRight,
 } from '@tabler/icons-react';
+import {
+  uploadDocument,
+  listDocuments,
+  getDocument,
+  deleteDocument,
+  type Document,
+  type FileTypeFilter,
+} from '@/lib/documents';
 
-const LIBRARY_FILES = [
-  {
-    id: '1',
-    name: 'Beijing_Travel_Guide_V2.pdf',
-    size: '4.2 MB',
-    pages: '12',
-    type: 'PDF DOCUMENT',
-    hsk: 'HSK 4',
-    date: 'Oct 24, 2023',
-    status: 'Ready',
-    progress: 100,
-  },
-  {
-    id: '2',
-    name: 'Daily_Life_Dialogue.mp4',
-    size: '48.5 MB',
-    duration: '15:20',
-    type: 'VIDEO CLIP',
-    hsk: 'HSK 3',
-    date: 'Oct 23, 2023',
-    status: 'Analyzing',
-    progress: 92,
-  },
-  {
-    id: '3',
-    name: 'Business_Chinese_L6.mp3',
-    size: '12.8 MB',
-    duration: '45:00',
-    type: 'AUDIO RECORDING',
-    hsk: 'HSK 5',
-    date: 'Oct 22, 2023',
-    status: 'Ready',
-    progress: 100,
-  },
-  {
-    id: '4',
-    name: 'Character_Writing_Manual.pdf',
-    size: '1.5 MB',
-    pages: '8',
-    type: 'PDF DOCUMENT',
-    hsk: 'HSK 1',
-    date: 'Oct 21, 2023',
-    status: 'Error',
-    progress: 0,
-    error: 'File unreadable',
-  },
-];
-
+const PAGE_SIZE = 10;
 const FILTER_TAGS = ['All', 'PDFs', 'Videos', 'Audios', 'HSK 1', 'HSK 2', 'HSK 3', 'HSK 4+'];
+const ACCEPTED_TYPES = '.pdf,.mp4,.mov,.avi,.mp3,.wav,.m4a,.ogg,.ppt,.pptx,application/pdf,video/*,audio/*,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation';
+const MAX_SIZE = 100 * 1024 * 1024;
+
+function getApiParams(filter: string, searchText: string): { fileType: FileTypeFilter; search?: string } {
+  switch (filter) {
+    case 'PDFs':  return { fileType: 'pdf',   search: searchText || undefined };
+    case 'Videos': return { fileType: 'video', search: searchText || undefined };
+    case 'Audios': return { fileType: 'audio', search: searchText || undefined };
+    case 'HSK 1': return { fileType: 'all', search: 'HSK1' };
+    case 'HSK 2': return { fileType: 'all', search: 'HSK2' };
+    case 'HSK 3': return { fileType: 'all', search: 'HSK3' };
+    case 'HSK 4+': return { fileType: 'all', search: 'HSK4' };
+    default:      return { fileType: 'all',   search: searchText || undefined };
+  }
+}
+
+function FileIcon({ fileType }: { fileType: string }) {
+  if (fileType === 'video') return <IconVideo size={18} />;
+  if (fileType === 'audio') return <IconHeadphones size={18} />;
+  if (fileType === 'ppt')   return <IconFileTypePpt size={18} />;
+  return <IconFileTypePdf size={18} />;
+}
+
+function fileTypeLabel(fileType: string): string {
+  const labels: Record<string, string> = {
+    pdf: 'PDF DOCUMENT', video: 'VIDEO CLIP', audio: 'AUDIO RECORDING', ppt: 'PRESENTATION',
+  };
+  return labels[fileType] ?? fileType.toUpperCase();
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 export default function LibraryPage() {
-  const [activePage, setPage] = useState(1);
+  const { data: session } = useSession();
+  const accessToken = session?.accessToken ?? '';
+
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const tokenCacheRef = useRef<Map<number, string | undefined>>(new Map([[1, undefined]]));
+
+  const [activeFilter, setActiveFilter] = useState('All');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch] = useDebouncedValue(search, 400);
+  const prevFilterRef = useRef(activeFilter);
+  const prevSearchRef = useRef(debouncedSearch);
+
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Main fetch effect
+  useEffect(() => {
+    if (!accessToken) return;
+
+    const filterChanged =
+      prevFilterRef.current !== activeFilter || prevSearchRef.current !== debouncedSearch;
+
+    let page = currentPage;
+    if (filterChanged) {
+      prevFilterRef.current = activeFilter;
+      prevSearchRef.current = debouncedSearch;
+      tokenCacheRef.current.clear();
+      tokenCacheRef.current.set(1, undefined);
+      page = 1;
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+        // Will re-run once currentPage settles to 1
+      }
+    }
+
+    const token = page === 1 ? undefined : tokenCacheRef.current.get(page);
+    const { fileType, search: apiSearch } = getApiParams(activeFilter, debouncedSearch);
+
+    let cancelled = false;
+    setLoading(true);
+
+    listDocuments(accessToken, { pageSize: PAGE_SIZE, continuationToken: token, fileType, search: apiSearch })
+      .then((result) => {
+        if (cancelled) return;
+        setDocuments(result.items);
+        setTotalCount(result.pagination.totalCount);
+        setHasMore(result.pagination.hasMore);
+        if (result.pagination.continuationToken) {
+          tokenCacheRef.current.set(page + 1, result.pagination.continuationToken);
+        }
+      })
+      .catch(console.error)
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [accessToken, currentPage, activeFilter, debouncedSearch]);
+
+  // Poll for documents that are pending/analyzing
+  useEffect(() => {
+    if (!accessToken) return;
+    const inProgress = documents.filter(
+      (d) => d.extractionStatus === 'pending' || d.extractionStatus === 'analyzing',
+    );
+    if (inProgress.length === 0) return;
+
+    const interval = setInterval(async () => {
+      for (const doc of inProgress) {
+        try {
+          const updated = await getDocument(doc.id, accessToken);
+          setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+        } catch { /* ignore */ }
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [documents, accessToken]);
+
+  async function handleUpload(file: File) {
+    if (!accessToken) return;
+    if (file.size > MAX_SIZE) {
+      setUploadError('File size exceeds 100MB limit.');
+      return;
+    }
+    setUploadError(null);
+    setUploading(true);
+    try {
+      await uploadDocument(file, accessToken);
+      // Refresh list from page 1
+      tokenCacheRef.current.clear();
+      tokenCacheRef.current.set(1, undefined);
+      setCurrentPage(1);
+      prevFilterRef.current = ''; // force refetch
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleUpload(file);
+  }
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) handleUpload(file);
+    e.target.value = '';
+  }
+
+  async function confirmDelete() {
+    if (!deleteTargetId || !accessToken) return;
+    setDeleting(true);
+    try {
+      await deleteDocument(deleteTargetId, accessToken);
+      setDocuments((prev) => prev.filter((d) => d.id !== deleteTargetId));
+      setTotalCount((n) => n - 1);
+      setDeleteTargetId(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const showingFrom = (currentPage - 1) * PAGE_SIZE + 1;
+  const showingTo = Math.min(currentPage * PAGE_SIZE, totalCount);
+
   return (
     <AppLayout
       title={
@@ -104,14 +248,7 @@ export default function LibraryPage() {
             position: 'relative',
           }}
         >
-          {/* Subtle Watermark Arrow */}
-          <Box style={{
-            position: 'absolute',
-            right: rem(100),
-            top: rem(-40),
-            opacity: 0.1,
-            pointerEvents: 'none',
-          }}>
+          <Box style={{ position: 'absolute', right: rem(100), top: rem(-40), opacity: 0.1, pointerEvents: 'none' }}>
             <IconUpload size={rem(400)} />
           </Box>
 
@@ -136,50 +273,87 @@ export default function LibraryPage() {
             <Card
               radius={24}
               p={rem(40)}
+              onDrop={handleDrop}
+              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+              onDragEnter={() => setIsDragOver(true)}
+              onDragLeave={() => setIsDragOver(false)}
               style={{
                 width: rem(420),
-                backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                border: '2px dashed rgba(255, 255, 255, 0.2)',
+                backgroundColor: isDragOver ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.08)',
+                border: `2px dashed ${isDragOver ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)'}`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 textAlign: 'center',
+                transition: 'all 0.2s ease',
               }}
             >
               <Stack align="center" gap={rem(24)}>
-                <Text fz={rem(16)} fw={700}>Drag and drop scrolls here.<br /><span style={{ opacity: 0.6, fontSize: rem(14) }}>Max size 100MB per file</span></Text>
-                <Button
-                  size="lg"
-                  radius={12}
-                  style={{
-                    backgroundColor: 'white',
-                    color: 'var(--bb-primary)',
-                    fontWeight: 800,
-                    paddingLeft: rem(32),
-                    paddingRight: rem(32),
-                  }}
-                >
-                  Browse Files
-                </Button>
+                {uploading ? (
+                  <Stack align="center" gap={rem(12)}>
+                    <Loader color="white" size="md" />
+                    <Text fz={rem(14)} fw={700} style={{ opacity: 0.85 }}>Uploading…</Text>
+                  </Stack>
+                ) : (
+                  <>
+                    <Text fz={rem(16)} fw={700}>
+                      Drag and drop scrolls here.<br />
+                      <span style={{ opacity: 0.6, fontSize: rem(14) }}>Max size 100MB per file</span>
+                    </Text>
+                    {uploadError && (
+                      <Text fz={rem(13)} fw={700} style={{ color: '#ffb3b3' }}>{uploadError}</Text>
+                    )}
+                    <Button
+                      size="lg"
+                      radius={12}
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{
+                        backgroundColor: 'white',
+                        color: 'var(--bb-primary)',
+                        fontWeight: 800,
+                        paddingLeft: rem(32),
+                        paddingRight: rem(32),
+                      }}
+                    >
+                      Browse Files
+                    </Button>
+                  </>
+                )}
               </Stack>
             </Card>
           </Group>
         </Card>
 
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPTED_TYPES}
+          style={{ display: 'none' }}
+          onChange={handleFileInput}
+        />
+
         {/* The Archive Section */}
         <Stack gap={rem(32)}>
           <Stack gap={rem(4)}>
             <Title order={2} fz={rem(24)} fw={800} c="var(--bb-on-surface)">The Archive</Title>
-            <Text fz="sm" fw={600} c="var(--bb-outline)">Your personal collection of 128 scholarly resources</Text>
+            <Text fz="sm" fw={600} c="var(--bb-outline)">
+              Your personal collection of {totalCount} scholarly resources
+            </Text>
           </Stack>
 
           <Card radius={24} p={rem(32)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
             <Stack gap={rem(32)}>
-              {/* Search & Tabs Overlay */}
-              <Group justify="space-between">
+              {/* Search & Filter */}
+              <Group justify="space-between" wrap="wrap" gap="sm">
                 <TextInput
                   placeholder="Search title, HSK, or tag..."
                   leftSection={<IconSearch size={18} color="var(--bb-outline)" />}
+                  value={search}
+                  onChange={(e) => {
+                    if (!activeFilter.startsWith('HSK')) setSearch(e.currentTarget.value);
+                  }}
+                  disabled={activeFilter.startsWith('HSK')}
                   styles={{
                     input: {
                       width: rem(340),
@@ -187,21 +361,25 @@ export default function LibraryPage() {
                       borderRadius: rem(12),
                       backgroundColor: 'var(--bb-surface-container-low)',
                       border: 'none',
-                    }
+                    },
                   }}
                 />
                 <Group gap={rem(8)}>
                   {FILTER_TAGS.map((tag) => (
                     <Badge
                       key={tag}
-                      variant={tag === 'All' ? 'filled' : 'light'}
-                      color={tag === 'All' ? 'var(--bb-primary)' : 'gray'}
+                      variant={tag === activeFilter ? 'filled' : 'light'}
+                      color={tag === activeFilter ? 'var(--bb-primary)' : 'gray'}
                       radius="sm"
                       px={rem(14)}
                       py={rem(12)}
                       fw={800}
                       fz={rem(11)}
                       style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                      onClick={() => {
+                        setActiveFilter(tag);
+                        if (tag.startsWith('HSK')) setSearch('');
+                      }}
                     >
                       {tag}
                     </Badge>
@@ -211,94 +389,171 @@ export default function LibraryPage() {
 
               {/* File Table */}
               <ScrollArea>
-                <Table verticalSpacing="md" styles={{
-                  thead: { borderBottom: '1px solid var(--bb-surface-container)' },
-                  th: { color: 'var(--bb-outline)', fontWeight: 800, fontSize: rem(11), textTransform: 'uppercase', letterSpacing: rem(1) },
-                  tr: { transition: 'background-color 0.2s ease' },
-                  td: { borderBottom: '1px solid var(--bb-surface-container)' }
-                }}>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>File Name</Table.Th>
-                      <Table.Th>Type</Table.Th>
-                      <Table.Th>HSK Level</Table.Th>
-                      <Table.Th>Upload Date</Table.Th>
-                      <Table.Th>AI Extraction</Table.Th>
-                      <Table.Th />
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {LIBRARY_FILES.map((file) => (
-                      <Table.Tr key={file.id} onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bb-surface-container-low)')} onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}>
-                        <Table.Td>
-                          <Group gap="sm">
-                            <Box p={rem(10)} bg="var(--bb-surface-container)" style={{ borderRadius: 10, display: 'flex' }}>
-                              {file.type.includes('PDF') ? <IconFileTypePdf size={18} /> : file.type.includes('VIDEO') ? <IconVideo size={18} /> : <IconHeadphones size={18} />}
-                            </Box>
-                            <Stack gap={rem(2)}>
-                              <Text fw={700} fz="sm">{file.name}</Text>
-                              <Text fz="xs" c="var(--bb-outline)" fw={600}>
-                                {file.size} • {file.pages ? `${file.pages} pages` : file.duration}
-                              </Text>
-                            </Stack>
-                          </Group>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text fz="xs" fw={800} c="var(--bb-on-surface-variant)">{file.type}</Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Badge color="green" variant="light" radius="sm" fw={800} fz={rem(10)}>{file.hsk}</Badge>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text fz="xs" fw={700} c="var(--bb-outline)">{file.date}</Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap="xs">
-                            {file.status === 'Ready' ? (
+                {loading ? (
+                  <Group justify="center" py={rem(48)}>
+                    <Loader color="var(--bb-primary)" />
+                  </Group>
+                ) : documents.length === 0 ? (
+                  <Text ta="center" py={rem(48)} c="var(--bb-outline)" fw={600}>
+                    No documents found.
+                  </Text>
+                ) : (
+                  <Table
+                    verticalSpacing="md"
+                    styles={{
+                      thead: { borderBottom: '1px solid var(--bb-surface-container)' },
+                      th: { color: 'var(--bb-outline)', fontWeight: 800, fontSize: rem(11), textTransform: 'uppercase', letterSpacing: rem(1) },
+                      tr: { transition: 'background-color 0.2s ease' },
+                      td: { borderBottom: '1px solid var(--bb-surface-container)' },
+                    }}
+                  >
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>File Name</Table.Th>
+                        <Table.Th>Type</Table.Th>
+                        <Table.Th>HSK Level</Table.Th>
+                        <Table.Th>Upload Date</Table.Th>
+                        <Table.Th>AI Extraction</Table.Th>
+                        <Table.Th />
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {documents.map((doc) => (
+                        <Table.Tr
+                          key={doc.id}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bb-surface-container-low)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                        >
+                          <Table.Td>
+                            <Group gap="sm">
+                              <Box p={rem(10)} bg="var(--bb-surface-container)" style={{ borderRadius: 10, display: 'flex' }}>
+                                <FileIcon fileType={doc.fileType} />
+                              </Box>
+                              <Stack gap={rem(2)}>
+                                <Text fw={700} fz="sm">{doc.fileName}</Text>
+                                <Text fz="xs" c="var(--bb-outline)" fw={600}>
+                                  {formatFileSize(doc.fileSize)}
+                                  {doc.pageCount ? ` • ${doc.pageCount} pages` : doc.duration ? ` • ${doc.duration}` : ''}
+                                </Text>
+                              </Stack>
+                            </Group>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text fz="xs" fw={800} c="var(--bb-on-surface-variant)">{fileTypeLabel(doc.fileType)}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            {doc.hskLevel != null ? (
+                              <Badge color="green" variant="light" radius="sm" fw={800} fz={rem(10)}>
+                                HSK {doc.hskLevel}
+                              </Badge>
+                            ) : (
+                              <Text fz="xs" c="var(--bb-outline)">—</Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Text fz="xs" fw={700} c="var(--bb-outline)">{formatDate(doc.uploadedAt)}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            {doc.extractionStatus === 'ready' ? (
                               <Group gap={rem(4)}>
                                 <IconCircleCheckFilled size={16} color="var(--bb-primary)" />
                                 <Text fz="xs" fw={800} c="var(--bb-primary)">Ready</Text>
                               </Group>
-                            ) : file.status === 'Analyzing' ? (
+                            ) : doc.extractionStatus === 'analyzing' || doc.extractionStatus === 'pending' ? (
                               <Stack gap={rem(4)} w={100}>
-                                <Text fz="xs" fw={800} c="var(--bb-primary)">{file.progress}% Analyzing</Text>
-                                <Progress value={file.progress} size="xs" color="var(--bb-primary)" radius="xl" />
+                                <Text fz="xs" fw={800} c="var(--bb-primary)">
+                                  {doc.extractionProgress}% Analyzing
+                                </Text>
+                                <Progress value={doc.extractionProgress} size="xs" color="var(--bb-primary)" radius="xl" />
                               </Stack>
                             ) : (
                               <Group gap={rem(4)}>
                                 <IconAlertCircleFilled size={16} color="red" />
-                                <Text fz="xs" fw={800} c="red">{file.error}</Text>
+                                <Text fz="xs" fw={800} c="red">Error</Text>
                               </Group>
                             )}
-                          </Group>
-                        </Table.Td>
-                        <Table.Td>
-                          <ActionIcon variant="subtle" color="gray">
-                            <IconDots size={20} />
-                          </ActionIcon>
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
+                          </Table.Td>
+                          <Table.Td>
+                            <Menu position="bottom-end" withinPortal>
+                              <Menu.Target>
+                                <ActionIcon variant="subtle" color="gray">
+                                  <IconDots size={20} />
+                                </ActionIcon>
+                              </Menu.Target>
+                              <Menu.Dropdown>
+                                <Menu.Item
+                                  color="red"
+                                  leftSection={<IconTrash size={14} />}
+                                  onClick={() => setDeleteTargetId(doc.id)}
+                                >
+                                  Delete
+                                </Menu.Item>
+                              </Menu.Dropdown>
+                            </Menu>
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                )}
               </ScrollArea>
 
-              <Stack gap={rem(16)} align="center" mt={rem(16)}>
-                <Pagination
-                  value={activePage}
-                  onChange={setPage}
-                  total={32}
-                  radius="md"
-                  color="var(--bb-primary)"
-                />
-                <Text fz="xs" fw={700} c="var(--bb-outline)">
-                  Showing {(activePage-1)*4 + 1} to {Math.min(activePage*4, 128)} of 128 scholarly assets
-                </Text>
-              </Stack>
+              {/* Pagination */}
+              {!loading && totalCount > 0 && (
+                <Stack gap={rem(16)} align="center" mt={rem(16)}>
+                  <Group gap={rem(12)}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      disabled={currentPage <= 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    >
+                      <IconChevronLeft size={18} />
+                    </ActionIcon>
+                    <Text fz="sm" fw={700} c="var(--bb-on-surface)">
+                      Page {currentPage} of {totalPages}
+                    </Text>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      disabled={!hasMore}
+                      onClick={() => setCurrentPage((p) => p + 1)}
+                    >
+                      <IconChevronRight size={18} />
+                    </ActionIcon>
+                  </Group>
+                  <Text fz="xs" fw={700} c="var(--bb-outline)">
+                    Showing {showingFrom}–{showingTo} of {totalCount} scholarly assets
+                  </Text>
+                </Stack>
+              )}
             </Stack>
           </Card>
         </Stack>
       </Stack>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        opened={!!deleteTargetId}
+        onClose={() => setDeleteTargetId(null)}
+        title={<Text fw={800} fz="md">Delete document?</Text>}
+        centered
+        radius={16}
+      >
+        <Stack gap={rem(24)}>
+          <Text fz="sm" c="var(--bb-on-surface-variant)">
+            This will permanently remove the document and its extracted content. This cannot be undone.
+          </Text>
+          <Group justify="flex-end" gap="sm">
+            <Button variant="subtle" color="gray" onClick={() => setDeleteTargetId(null)}>
+              Cancel
+            </Button>
+            <Button color="red" loading={deleting} onClick={confirmDelete}>
+              Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </AppLayout>
   );
 }
