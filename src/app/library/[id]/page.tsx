@@ -21,6 +21,7 @@ import {
   Divider,
 } from '@mantine/core';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { AudioPlayer } from '@/components/AudioPlayer';
 import {
   IconArrowLeft,
   IconFileTypePdf,
@@ -34,9 +35,11 @@ import {
 import {
   getDocument,
   getDocumentStatus,
+  getAudioUrl,
   type Document,
   type ExtractedWord,
 } from '@/lib/documents';
+import { calculateWordTimings, getHighlightedWordAtTime, type WordTiming } from '@/lib/wordTiming';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -71,7 +74,7 @@ const DONE_STATUSES = new Set(['ready', 'failed', 'error']);
 
 // ─── Word tooltip ────────────────────────────────────────────────────────────
 
-function WordChip({ word }: { word: ExtractedWord }) {
+function WordChip({ word, isHighlighted = false }: { word: ExtractedWord; isHighlighted?: boolean }) {
   return (
     <Tooltip
       multiline
@@ -94,10 +97,14 @@ function WordChip({ word }: { word: ExtractedWord }) {
     >
       <span
         style={{
-          color: 'var(--bb-primary)',
-          borderBottom: '2px solid currentColor',
+          color: isHighlighted ? 'var(--bb-primary)' : 'var(--bb-primary)',
+          borderBottom: isHighlighted ? '3px solid var(--bb-primary)' : '2px solid currentColor',
+          backgroundColor: isHighlighted ? 'rgba(0, 0, 0, 0.05)' : 'transparent',
           cursor: 'help',
           display: 'inline',
+          padding: isHighlighted ? '0 2px' : '0',
+          borderRadius: isHighlighted ? '3px' : '0',
+          transition: 'all 0.1s ease',
         }}
       >
         {word.word}
@@ -108,21 +115,81 @@ function WordChip({ word }: { word: ExtractedWord }) {
 
 // ─── Annotated text renderer ─────────────────────────────────────────────────
 
-function AnnotatedText({ text, words }: { text: string; words: ExtractedWord[] }) {
+function AnnotatedText({ 
+  text, 
+  words, 
+  highlightedWord,
+}: { 
+  text: string; 
+  words: ExtractedWord[];
+  highlightedWord?: number | null;
+}) {
   if (!text) return null;
   if (words.length === 0) return <span>{text}</span>;
 
-  const wordMap = new Map(words.map((w) => [w.word, w]));
+  const wordMap = new Map(words.map((w, idx) => [w.word, idx])); // Map word string to its index in words array
   const sorted = [...words].sort((a, b) => b.word.length - a.word.length);
   const escaped = sorted.map((w) => w.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const regex = new RegExp(`(${escaped.join('|')})`, 'g');
-  const parts = text.split(regex);
+  
+  // Map each character position in text to its corresponding word index
+  // Handle duplicates: if a word appears multiple times in extractedWords array,
+  // map each occurrence in the text to the corresponding array entry
+  const charPosToWordIndex = new Map<number, number>();
+  const wordOccurrenceCount = new Map<string, number>(); // word string → how many times we've processed it
 
+  for (let wordIdx = 0; wordIdx < words.length; wordIdx++) {
+    const wordStr = words[wordIdx].word;
+    const targetOccurrence = (wordOccurrenceCount.get(wordStr) ?? 0) + 1;
+    wordOccurrenceCount.set(wordStr, targetOccurrence);
+    
+    // Find the nth occurrence of this word in the text
+    let searchIndex = 0;
+    let currentOccurrence = 0;
+    
+    while (searchIndex < text.length && currentOccurrence < targetOccurrence) {
+      const index = text.indexOf(wordStr, searchIndex);
+      if (index === -1) break;
+      
+      currentOccurrence++;
+      if (currentOccurrence === targetOccurrence) {
+        charPosToWordIndex.set(index, wordIdx);
+        break;
+      }
+      
+      searchIndex = index + 1;
+    }
+  }
+  
+  // Now split by regex and track character position
+  const parts = text.split(regex);
+  let charPos = 0;
+  
   return (
     <>
       {parts.map((part, i) => {
-        const word = wordMap.get(part);
-        return word ? <WordChip key={i} word={word} /> : <span key={i}>{part}</span>;
+        const wordIdx = wordMap.get(part);
+        let isHighlighted = false;
+        
+        if (wordIdx !== undefined) {
+          // Check if this occurrence is the highlighted word
+          const occurrenceWordIdx = charPosToWordIndex.get(charPos);
+          isHighlighted = occurrenceWordIdx === highlightedWord;
+        }
+        
+        const word = wordIdx !== undefined ? words[wordIdx] : null;
+        const element = word ? (
+          <WordChip 
+            key={i} 
+            word={word}
+            isHighlighted={isHighlighted}
+          />
+        ) : (
+          <span key={i}>{part}</span>
+        );
+        
+        charPos += part.length;
+        return element;
       })}
     </>
   );
@@ -205,12 +272,109 @@ function ProcessingCard({ doc }: { doc: Document }) {
 // ─── Ready view ──────────────────────────────────────────────────────────────
 
 function ReadyView({ doc }: { doc: Document }) {
+  const { data: session } = useSession();
+  const accessToken = session?.accessToken ?? '';
   const sortedWords = [...doc.extractedWords].sort((a, b) => b.frequency - a.frequency);
+  const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
+  const [wordTimings, setWordTimings] = useState<WordTiming[]>([]);
+  const [audioUrl, setAudioUrl] = useState<string>('');
+  const [audioLoading, setAudioLoading] = useState(false);
+
+  const highlightedWord = wordTimings.length > 0 
+    ? getHighlightedWordAtTime(currentPlaybackTime, wordTimings)
+    : null;
+
+  // Fetch the SAS-signed audio URL for audio files
+  useEffect(() => {
+    if (doc.fileType === 'audio' && accessToken) {
+      setAudioLoading(true);
+      getAudioUrl(doc.id, accessToken)
+        .then((response) => {
+          setAudioUrl(response.url);
+          setAudioLoading(false);
+        })
+        .catch((err) => {
+          console.error('Failed to get audio URL:', err);
+          setAudioLoading(false);
+        });
+    }
+  }, [doc.fileType, doc.id, accessToken]);
+
+  useEffect(() => {
+    if (doc.fileType === 'audio' && doc.extractedText) {
+      // Calculate word timings based on the audio duration
+      const duration = doc.duration 
+        ? parseInt(doc.duration.split(':')[0]) * 60 + parseInt(doc.duration.split(':')[1])
+        : 0;
+      
+      if (duration > 0) {
+        const timings = calculateWordTimings(doc.extractedText, doc.extractedWords, duration);
+        console.log('Word timings calculated:', {
+          totalOccurrences: timings.length,
+          duration,
+          firstFewTimings: timings.slice(0, 3),
+        });
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setWordTimings(timings);
+      }
+    }
+  }, [doc.fileType, doc.extractedText, doc.extractedWords, doc.duration]);
+
+  useEffect(() => {
+    console.log('Highlighted word changed:', { 
+      currentPlaybackTime, 
+      highlightedWord,
+      wordTimingsLength: wordTimings.length,
+    });
+  }, [highlightedWord, currentPlaybackTime, wordTimings.length]);
 
   return (
     <SimpleGrid cols={{ base: 1, lg: 3 }} spacing={rem(32)} style={{ alignItems: 'start' }}>
-      {/* Extracted Text — spans 2 columns */}
-      <Box style={{ gridColumn: 'span 2' }}>
+      {/* Audio Player — only for audio files with loaded URL */}
+      {doc.fileType === 'audio' && (
+        <Box style={{ gridColumn: 'span 2' }}>
+          {audioLoading ? (
+            <Card
+              radius={24}
+              p={rem(32)}
+              style={{
+                backgroundColor: 'var(--bb-surface-container-lowest)',
+                border: 'none',
+              }}
+            >
+              <Stack gap={rem(16)} align="center">
+                <Loader size="sm" color="var(--bb-primary)" />
+                <Text fz={rem(13)} c="var(--bb-on-surface-variant)" fw={500}>
+                  Loading audio player...
+                </Text>
+              </Stack>
+            </Card>
+          ) : audioUrl ? (
+            <AudioPlayer
+              audioUrl={audioUrl}
+              fileName={doc.fileName}
+              duration={doc.duration ?? undefined}
+              onTimeUpdate={setCurrentPlaybackTime}
+            />
+          ) : (
+            <Card
+              radius={24}
+              p={rem(32)}
+              style={{
+                backgroundColor: 'var(--bb-surface-container-lowest)',
+                border: 'none',
+              }}
+            >
+              <Text fz={rem(12)} c="red" fw={600}>
+                Failed to load audio player
+              </Text>
+            </Card>
+          )}
+        </Box>
+      )}
+
+      {/* Extracted Text — spans 2 columns, or 3 if no audio player */}
+      <Box style={{ gridColumn: doc.fileType === 'audio' ? 'span 2' : 'span 2' }}>
         <Card radius={24} p={rem(40)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
           <Group justify="space-between" mb={rem(24)}>
             <Title order={3} fz={rem(18)} fw={800} c="var(--bb-on-surface)">Extracted Text</Title>
@@ -232,7 +396,11 @@ function ReadyView({ doc }: { doc: Document }) {
                 c="var(--bb-on-surface)"
                 style={{ wordBreak: 'break-all' }}
               >
-                <AnnotatedText text={doc.extractedText} words={doc.extractedWords} />
+                <AnnotatedText 
+                  text={doc.extractedText} 
+                  words={doc.extractedWords}
+                  highlightedWord={highlightedWord}
+                />
               </Text>
             </ScrollArea>
           ) : (

@@ -6,6 +6,8 @@ export interface ExtractedWord {
   meaning: string;
   hskLevel: number;
   frequency: number;
+  offsetSeconds?: number;
+  durationSeconds?: number;
 }
 
 export interface Document {
@@ -112,4 +114,17 @@ export async function deleteDocument(id: string, accessToken: string): Promise<v
     const data = await res.json().catch(() => ({}));
     throw new Error((data as { message?: string }).message ?? 'Delete failed');
   }
+}
+
+export interface AudioUrlResponse {
+  url: string;
+  expiresIn: number;
+}
+
+export async function getAudioUrl(id: string, accessToken: string): Promise<AudioUrlResponse> {
+  const res = await fetch(`${API_URL}/api/documents/${id}/audio-url`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error('Failed to get audio URL');
+  return res.json();
 }
