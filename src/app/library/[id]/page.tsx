@@ -22,6 +22,7 @@ import {
 } from '@mantine/core';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AudioPlayer } from '@/components/AudioPlayer';
+import { VideoPlayer } from '@/components/VideoPlayer';
 import {
   IconArrowLeft,
   IconFileTypePdf,
@@ -36,6 +37,7 @@ import {
   getDocument,
   getDocumentStatus,
   getAudioUrl,
+  getVideoUrl,
   type Document,
   type ExtractedWord,
 } from '@/lib/documents';
@@ -279,6 +281,8 @@ function ReadyView({ doc }: { doc: Document }) {
   const [wordTimings, setWordTimings] = useState<WordTiming[]>([]);
   const [audioUrl, setAudioUrl] = useState<string>('');
   const [audioLoading, setAudioLoading] = useState(false);
+  const [videoUrl, setVideoUrl] = useState<string>('');
+  const [videoLoading, setVideoLoading] = useState(false);
 
   const highlightedWord = wordTimings.length > 0 
     ? getHighlightedWordAtTime(currentPlaybackTime, wordTimings)
@@ -300,33 +304,93 @@ function ReadyView({ doc }: { doc: Document }) {
     }
   }, [doc.fileType, doc.id, accessToken]);
 
+  // Fetch the SAS-signed video URL for video files
   useEffect(() => {
-    if (doc.fileType === 'audio' && doc.extractedText) {
-      // Calculate word timings based on the audio duration
-      const duration = doc.duration 
-        ? parseInt(doc.duration.split(':')[0]) * 60 + parseInt(doc.duration.split(':')[1])
-        : 0;
+    if (doc.fileType === 'video' && accessToken) {
+      setVideoLoading(true);
+      getVideoUrl(doc.id, accessToken)
+        .then((response) => {
+          setVideoUrl(response.url);
+          setVideoLoading(false);
+        })
+        .catch((err) => {
+          console.error('Failed to get video URL:', err);
+          setVideoLoading(false);
+        });
+    }
+  }, [doc.fileType, doc.id, accessToken]);
+
+  useEffect(() => {
+    console.log('📊 ReadyView mounted/updated with doc:', {
+      fileType: doc.fileType,
+      hasExtractedText: !!doc.extractedText,
+      textLength: doc.extractedText?.length ?? 0,
+      wordCount: doc.extractedWords.length,
+      duration: doc.duration,
+    });
+  }, [doc.fileType, doc.extractedText, doc.extractedWords, doc.duration]);
+
+  useEffect(() => {
+    if ((doc.fileType === 'audio' || doc.fileType === 'video') && doc.extractedText) {
+      // Calculate word timings based on the duration
+      // Duration format: "H:MM:SS.ffffff" (e.g., "0:00:08.113878")
+      let duration = 0;
+      if (doc.duration) {
+        const parts = doc.duration.split(':');
+        if (parts.length >= 3) {
+          const hours = parseInt(parts[0]) || 0;
+          const minutes = parseInt(parts[1]) || 0;
+          const seconds = parseFloat(parts[2]) || 0;
+          duration = hours * 3600 + minutes * 60 + seconds;
+        } else if (parts.length === 2) {
+          // Fallback: old format "MM:SS"
+          const minutes = parseInt(parts[0]) || 0;
+          const seconds = parseFloat(parts[1]) || 0;
+          duration = minutes * 60 + seconds;
+        }
+      }
+      
+      console.log('🎬 Word timing effect triggered:', {
+        fileType: doc.fileType,
+        hasText: !!doc.extractedText,
+        durationString: doc.duration,
+        durationSeconds: duration,
+        wordCount: doc.extractedWords.length,
+      });
       
       if (duration > 0) {
         const timings = calculateWordTimings(doc.extractedText, doc.extractedWords, duration);
-        console.log('Word timings calculated:', {
+        console.log('📝 Word timings calculated:', {
           totalOccurrences: timings.length,
           duration,
-          firstFewTimings: timings.slice(0, 3),
+          timePerWord: (duration / timings.length).toFixed(3),
+          allTimings: timings.map(t => ({ word: t.word, idx: t.wordIndex, start: t.startTime.toFixed(2), end: t.endTime.toFixed(2), duration: (t.endTime - t.startTime).toFixed(2) })),
         });
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setWordTimings(timings);
+      } else {
+        console.warn('❌ Duration is 0 or invalid:', doc.duration);
       }
+    } else {
+      console.warn('⚠️ Word timing effect condition failed:', {
+        isAudioOrVideo: doc.fileType === 'audio' || doc.fileType === 'video',
+        hasExtractedText: !!doc.extractedText,
+      });
     }
   }, [doc.fileType, doc.extractedText, doc.extractedWords, doc.duration]);
 
   useEffect(() => {
-    console.log('Highlighted word changed:', { 
-      currentPlaybackTime, 
+    if (wordTimings.length === 0) {
+      console.log('⏱️ No word timings available yet');
+      return;
+    }
+    
+    console.log('⏯️ Playback update:', {
+      currentTime: currentPlaybackTime.toFixed(2),
       highlightedWord,
-      wordTimingsLength: wordTimings.length,
+      wordTimingsCount: wordTimings.length,
+      nextWord: wordTimings.find(t => t.startTime <= currentPlaybackTime && currentPlaybackTime < t.endTime),
     });
-  }, [highlightedWord, currentPlaybackTime, wordTimings.length]);
+  }, [currentPlaybackTime]);
 
   return (
     <SimpleGrid cols={{ base: 1, lg: 3 }} spacing={rem(32)} style={{ alignItems: 'start' }}>
@@ -373,8 +437,51 @@ function ReadyView({ doc }: { doc: Document }) {
         </Box>
       )}
 
-      {/* Extracted Text — spans 2 columns, or 3 if no audio player */}
-      <Box style={{ gridColumn: doc.fileType === 'audio' ? 'span 2' : 'span 2' }}>
+      {/* Video Player — only for video files with loaded URL */}
+      {doc.fileType === 'video' && (
+        <Box style={{ gridColumn: 'span 2' }}>
+          {videoLoading ? (
+            <Card
+              radius={24}
+              p={rem(32)}
+              style={{
+                backgroundColor: 'var(--bb-surface-container-lowest)',
+                border: 'none',
+              }}
+            >
+              <Stack gap={rem(16)} align="center">
+                <Loader size="sm" color="var(--bb-primary)" />
+                <Text fz={rem(13)} c="var(--bb-on-surface-variant)" fw={500}>
+                  Loading video player...
+                </Text>
+              </Stack>
+            </Card>
+          ) : videoUrl ? (
+            <VideoPlayer
+              videoUrl={videoUrl}
+              fileName={doc.fileName}
+              duration={doc.duration ?? undefined}
+              onTimeUpdate={setCurrentPlaybackTime}
+            />
+          ) : (
+            <Card
+              radius={24}
+              p={rem(32)}
+              style={{
+                backgroundColor: 'var(--bb-surface-container-lowest)',
+                border: 'none',
+              }}
+            >
+              <Text fz={rem(12)} c="red" fw={600}>
+                Failed to load video player
+              </Text>
+            </Card>
+          )}
+        </Box>
+      )}
+
+      {/* Extracted Text — spans 2 columns, or 3 if no audio/video player */}
+      <Box style={{ gridColumn: doc.fileType === 'audio' || doc.fileType === 'video' ? 'span 2' : 'span 2' }}>
         <Card radius={24} p={rem(40)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
           <Group justify="space-between" mb={rem(24)}>
             <Title order={3} fz={rem(18)} fw={800} c="var(--bb-on-surface)">Extracted Text</Title>

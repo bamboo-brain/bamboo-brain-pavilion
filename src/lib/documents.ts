@@ -65,6 +65,7 @@ export async function listDocuments(
     continuationToken?: string;
     fileType?: FileTypeFilter;
     search?: string;
+    hskLevel?: number;
   } = {},
 ): Promise<DocumentListResponse> {
   const query = new URLSearchParams();
@@ -72,6 +73,7 @@ export async function listDocuments(
   if (params.continuationToken) query.set('continuationToken', params.continuationToken);
   if (params.fileType && params.fileType !== 'all') query.set('fileType', params.fileType);
   if (params.search) query.set('search', params.search);
+  if (params.hskLevel) query.set('hskLevel', String(params.hskLevel));
 
   const res = await fetch(`${API_URL}/api/documents?${query}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -126,5 +128,18 @@ export async function getAudioUrl(id: string, accessToken: string): Promise<Audi
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) throw new Error('Failed to get audio URL');
+  return res.json();
+}
+
+export interface VideoUrlResponse {
+  url: string;
+  expiresIn: number;
+}
+
+export async function getVideoUrl(id: string, accessToken: string): Promise<VideoUrlResponse> {
+  const res = await fetch(`${API_URL}/api/documents/${id}/video-url`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error('Failed to get video URL');
   return res.json();
 }

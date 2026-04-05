@@ -53,15 +53,15 @@ const FILTER_TAGS = ['All', 'PDFs', 'Videos', 'Audios', 'HSK 1', 'HSK 2', 'HSK 3
 const ACCEPTED_TYPES = '.pdf,.mp4,.mov,.avi,.mp3,.wav,.m4a,.ogg,.ppt,.pptx,application/pdf,video/*,audio/*,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation';
 const MAX_SIZE = 100 * 1024 * 1024;
 
-function getApiParams(filter: string, searchText: string): { fileType: FileTypeFilter; search?: string } {
+function getApiParams(filter: string, searchText: string): { fileType: FileTypeFilter; search?: string; hskLevel?: number } {
   switch (filter) {
     case 'PDFs':  return { fileType: 'pdf',   search: searchText || undefined };
     case 'Videos': return { fileType: 'video', search: searchText || undefined };
     case 'Audios': return { fileType: 'audio', search: searchText || undefined };
-    case 'HSK 1': return { fileType: 'all', search: 'HSK1' };
-    case 'HSK 2': return { fileType: 'all', search: 'HSK2' };
-    case 'HSK 3': return { fileType: 'all', search: 'HSK3' };
-    case 'HSK 4+': return { fileType: 'all', search: 'HSK4' };
+    case 'HSK 1': return { fileType: 'all', search: searchText || undefined, hskLevel: 1 };
+    case 'HSK 2': return { fileType: 'all', search: searchText || undefined, hskLevel: 2 };
+    case 'HSK 3': return { fileType: 'all', search: searchText || undefined, hskLevel: 3 };
+    case 'HSK 4+': return { fileType: 'all', search: searchText || undefined, hskLevel: 4 };
     default:      return { fileType: 'all',   search: searchText || undefined };
   }
 }
