@@ -18,13 +18,14 @@ import {
   Button,
   Loader,
   Skeleton,
+  Notification,
 } from '@mantine/core';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { WaveformAnimation } from '@/components/speaking/WaveformAnimation';
 import { ConversationBubble } from '@/components/speaking/ConversationBubble';
 import { SessionInsightsPanel } from '@/components/speaking/SessionInsightsPanel';
 import { MicButton } from '@/components/speaking/MicButton';
-import { IconArrowLeft, IconPlayerStop } from '@tabler/icons-react';
+import { IconArrowLeft, IconPlayerStop, IconAlertCircle } from '@tabler/icons-react';
 import { getSession, processAudioTurn, endSession } from '@/lib/api/speaking';
 import { AudioRecorder, blobToBase64, createAudioAnalyser } from '@/lib/audio-recorder';
 import type { SpeakingSession, ConversationTurn } from '@/types/speaking';
@@ -44,11 +45,15 @@ export default function ActiveSessionPage() {
   const [audioLevel, setAudioLevel] = useState(0);
   const [sessionDuration, setSessionDuration] = useState(0);
   const [ending, setEnding] = useState(false);
+  const [isAIPlaying, setIsAIPlaying] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const recorderRef = useRef<AudioRecorder>(new AudioRecorder());
   const analyserRef = useRef<ReturnType<typeof createAudioAnalyser> | null>(null);
-  const animFrameRef = useRef<number>();
-  const durationIntervalRef = useRef<ReturnType<typeof setInterval>>();
+  const animFrameRef = useRef<number | undefined>(undefined);
+  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Load session + start timer
@@ -63,9 +68,7 @@ export default function ActiveSessionPage() {
           setLoading(false);
           // Auto-play first AI turn if audio exists
           const firstAI = s.turns.find((t) => t.role === 'ai' && t.audioUrl);
-          if (firstAI?.audioUrl) {
-            new Audio(firstAI.audioUrl).play().catch(() => {});
-          }
+          if (firstAI?.audioUrl) playAudio(firstAI.audioUrl);
         }
       })
       .catch(() => { if (!cancelled) setLoading(false); });
@@ -80,6 +83,31 @@ export default function ActiveSessionPage() {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
   }, [accessToken, sessionId]);
+
+  function playAudio(url: string) {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    setIsAIPlaying(true);
+    audio.play().catch((err) => {
+      setIsAIPlaying(false);
+      showError(`Could not play audio: ${err.message}`);
+    });
+    audio.onended = () => setIsAIPlaying(false);
+    audio.onerror = () => {
+      setIsAIPlaying(false);
+      showError('Audio playback failed');
+    };
+  }
+
+  function showError(msg: string) {
+    clearTimeout(errorTimerRef.current);
+    setErrorMsg(msg);
+    errorTimerRef.current = setTimeout(() => setErrorMsg(null), 4000);
+  }
 
   // Auto-scroll on new turns
   useEffect(() => {
@@ -140,12 +168,12 @@ export default function ActiveSessionPage() {
       const updated = await getSession(speakingSession.id, accessToken);
       setSpeakingSession(updated);
 
-      // Auto-play AI response
-      if (aiTurn.audioUrl) {
-        new Audio(aiTurn.audioUrl).play().catch(() => {});
-      }
+      // Play the latest AI turn audio from the refreshed session
+      const latestAI = [...updated.turns].reverse().find((t) => t.role === 'ai' && t.audioUrl);
+      if (latestAI?.audioUrl) playAudio(latestAI.audioUrl);
     } catch (err) {
-      console.error('Processing failed:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to process audio';
+      showError(msg);
       // Remove placeholder on error
       setSpeakingSession((prev) =>
         prev ? { ...prev, turns: prev.turns.filter((t) => t.id !== 'pending') } : prev,
@@ -166,7 +194,8 @@ export default function ActiveSessionPage() {
       );
       router.push(`/speaking/${speakingSession.id}/summary`);
     } catch (err) {
-      console.error('Failed to end session:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to end session';
+      showError(msg);
       setEnding(false);
     }
   }
@@ -203,7 +232,23 @@ export default function ActiveSessionPage() {
   const isCompleted = speakingSession.status === 'completed';
 
   return (
-    <AppLayout
+    <>
+      {errorMsg && (
+        <div style={{ position: 'fixed', top: rem(24), right: rem(24), zIndex: 9999, maxWidth: rem(360) }}>
+          <Notification
+            icon={<IconAlertCircle size={18} />}
+            color="red"
+            title="Error"
+            onClose={() => setErrorMsg(null)}
+            withBorder
+            radius={12}
+            styles={{ root: { boxShadow: '0 4px 20px rgba(0,0,0,0.12)' } }}
+          >
+            {errorMsg}
+          </Notification>
+        </div>
+      )}
+      <AppLayout
       title={
         <Group gap="sm">
           <ActionIcon variant="subtle" color="gray" onClick={() => router.push('/speaking')}>
@@ -254,12 +299,14 @@ export default function ActiveSessionPage() {
 
                 {/* Waveform */}
                 <Stack align="center" gap={rem(8)} w="100%" maw={360}>
-                  <WaveformAnimation isActive={isRecording || isProcessing} level={audioLevel} />
+                  <WaveformAnimation isActive={isRecording || isProcessing || isAIPlaying} level={isAIPlaying ? 0.6 : audioLevel} />
                   <Text fz="xs" fw={700} c="var(--bb-outline)">
                     {isRecording
                       ? 'Listening to your pronunciation...'
                       : isProcessing
                       ? 'Processing your response...'
+                      : isAIPlaying
+                      ? 'Master Ling is speaking...'
                       : 'Ready to listen'}
                   </Text>
                 </Stack>
@@ -330,5 +377,6 @@ export default function ActiveSessionPage() {
         />
       </SimpleGrid>
     </AppLayout>
+    </>
   );
 }
