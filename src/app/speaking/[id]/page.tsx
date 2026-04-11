@@ -145,6 +145,7 @@ export default function ActiveSessionPage() {
     try {
       const blob = await recorderRef.current.stop();
       const base64 = await blobToBase64(blob);
+      const mimeType = blob.type || recorderRef.current.getMimeType();
 
       // Optimistic placeholder
       const placeholder: ConversationTurn = {
@@ -160,7 +161,7 @@ export default function ActiveSessionPage() {
 
       const aiTurn = await processAudioTurn(
         speakingSession.id,
-        { audioBase64: base64, mimeType: 'audio/webm' },
+        { audioBase64: base64, mimeType },
         accessToken,
       );
 

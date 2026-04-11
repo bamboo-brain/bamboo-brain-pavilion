@@ -2,13 +2,22 @@ export class AudioRecorder {
   private mediaRecorder: MediaRecorder | null = null;
   private chunks: Blob[] = [];
   private stream: MediaStream | null = null;
+  private recordedMimeType: string = 'audio/webm;codecs=opus';
 
   async start(): Promise<void> {
     this.chunks = [];
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    this.mediaRecorder = new MediaRecorder(this.stream, {
-      mimeType: 'audio/webm;codecs=opus',
-    });
+
+    const mimeTypes = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4',
+    ];
+    const supportedMime = mimeTypes.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'audio/webm';
+    this.recordedMimeType = supportedMime;
+
+    this.mediaRecorder = new MediaRecorder(this.stream, { mimeType: supportedMime });
 
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) this.chunks.push(e.data);
@@ -25,13 +34,17 @@ export class AudioRecorder {
       }
 
       this.mediaRecorder.onstop = () => {
-        const blob = new Blob(this.chunks, { type: 'audio/webm' });
+        const blob = new Blob(this.chunks, { type: this.recordedMimeType });
         this.cleanup();
         resolve(blob);
       };
 
       this.mediaRecorder.stop();
     });
+  }
+
+  getMimeType(): string {
+    return this.recordedMimeType;
   }
 
   private cleanup() {
