@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Box, Text, Badge, Stack, rem } from '@mantine/core';
+import { Box, Text, Stack, rem } from '@mantine/core';
 import type { StudyEvent } from '@/types/planner';
 
 interface CalendarGridProps {
@@ -44,18 +44,6 @@ function buildCalendarGrid(year: number, month: number) {
   return days;
 }
 
-function eventBadgeColor(type: StudyEvent['type']) {
-  const map: Record<string, string> = {
-    flashcards: 'green',
-    speaking: 'blue',
-    quiz: 'orange',
-    reading: 'teal',
-    review: 'violet',
-    milestone: 'yellow',
-  };
-  return map[type] ?? 'gray';
-}
-
 export function CalendarGrid({ year, month, eventsByDate, selectedDate, onSelectDate }: CalendarGridProps) {
   const today = new Date().toISOString().split('T')[0];
   const days = useMemo(() => buildCalendarGrid(year, month), [year, month]);
@@ -63,76 +51,98 @@ export function CalendarGrid({ year, month, eventsByDate, selectedDate, onSelect
   return (
     <Box>
       {/* Weekday headers */}
-      <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: rem(8), marginBottom: rem(8) }}>
+      <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: rem(6), marginBottom: rem(6) }}>
         {WEEKDAYS.map((d) => (
-          <Text key={d} fz={rem(11)} fw={800} c="var(--bb-outline)" ta="center" tt="uppercase" style={{ letterSpacing: rem(1) }}>
+          <Text key={d} fz={rem(11)} fw={700} c="var(--bb-outline)" ta="center" tt="uppercase" style={{ letterSpacing: rem(0.5) }}>
             {d}
           </Text>
         ))}
       </Box>
 
       {/* Day cells */}
-      <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: rem(8) }}>
+      <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: rem(6) }}>
         {days.map((day) => {
           const isToday = day.date === today;
           const isSelected = day.date === selectedDate;
           const dayEvents = eventsByDate.get(day.date) ?? [];
+
+          let bgColor: string;
+          let borderColor: string;
+
+          if (isSelected && isToday) {
+            bgColor = '#dcfce7';
+            borderColor = '#16a34a';
+          } else if (isSelected) {
+            bgColor = 'var(--bb-surface-container)';
+            borderColor = 'var(--bb-primary)';
+          } else if (isToday) {
+            bgColor = '#f0fdf4';
+            borderColor = '#86efac';
+          } else if (day.isCurrentMonth) {
+            bgColor = 'var(--bb-surface-container-low)';
+            borderColor = 'transparent';
+          } else {
+            bgColor = 'var(--bb-surface-container-low)';
+            borderColor = 'transparent';
+          }
 
           return (
             <Box
               key={day.date}
               onClick={() => onSelectDate(day.date)}
               style={{
-                minHeight: rem(100),
+                minHeight: rem(90),
                 padding: rem(10),
                 borderRadius: rem(14),
-                border: isSelected
-                  ? '2px solid var(--bb-primary)'
-                  : isToday
-                  ? '2px solid rgba(21,66,18,0.3)'
-                  : '2px solid transparent',
-                backgroundColor: isToday
-                  ? 'rgba(21,66,18,0.04)'
-                  : day.isCurrentMonth
-                  ? 'var(--bb-surface-container-low)'
-                  : 'transparent',
-                opacity: day.isCurrentMonth ? 1 : 0.4,
+                border: `2px solid ${borderColor}`,
+                backgroundColor: bgColor,
+                opacity: day.isCurrentMonth ? 1 : 0.45,
                 cursor: 'pointer',
                 transition: 'border-color 0.15s ease, background-color 0.15s ease',
+                boxSizing: 'border-box',
               }}
               onMouseEnter={(e) => {
-                if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--bb-surface-container)';
+                if (!isSelected && !isToday) {
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--bb-outline-variant)';
+                }
               }}
               onMouseLeave={(e) => {
-                if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = isToday ? 'rgba(21,66,18,0.04)' : day.isCurrentMonth ? 'var(--bb-surface-container-low)' : 'transparent';
+                if (!isSelected && !isToday) {
+                  (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
+                }
               }}
             >
               <Text
                 fz="sm"
-                fw={800}
-                c={isToday ? 'var(--bb-primary)' : 'var(--bb-on-surface)'}
-                mb={rem(6)}
+                fw={700}
+                c={isToday ? '#15803d' : 'var(--bb-on-surface)'}
+                mb={rem(5)}
               >
                 {new Date(day.date + 'T00:00:00').getDate()}
               </Text>
               <Stack gap={rem(3)}>
                 {dayEvents.slice(0, 2).map((event) => (
-                  <Badge
+                  <div
                     key={event.id}
-                    size="xs"
-                    radius="sm"
-                    variant={event.status === 'completed' ? 'filled' : 'light'}
-                    color={eventBadgeColor(event.type)}
-                    fw={700}
-                    fullWidth
-                    tt="none"
-                    style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    style={{
+                      backgroundColor: event.color + '28',
+                      color: event.color,
+                      fontSize: rem(11),
+                      fontWeight: 700,
+                      padding: `${rem(2)} ${rem(6)}`,
+                      borderRadius: rem(4),
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      opacity: event.status === 'skipped' ? 0.5 : 1,
+                      textDecoration: event.status === 'skipped' ? 'line-through' : 'none',
+                    }}
                   >
-                    {event.title}
-                  </Badge>
+                    {event.status === 'completed' && '✓ '}{event.title}
+                  </div>
                 ))}
                 {dayEvents.length > 2 && (
-                  <Text fz={rem(10)} fw={700} c="var(--bb-outline)">+{dayEvents.length - 2} more</Text>
+                  <Text fz={rem(10)} fw={600} c="var(--bb-outline)">+{dayEvents.length - 2} more</Text>
                 )}
               </Stack>
             </Box>
