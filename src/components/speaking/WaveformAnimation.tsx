@@ -15,7 +15,7 @@ export function WaveformAnimation({
   barCount = 20,
 }: WaveformAnimationProps) {
   const [tick, setTick] = useState(0);
-  const animRef = useRef<number>();
+  const animRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isActive) {
