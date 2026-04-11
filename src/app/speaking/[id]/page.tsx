@@ -1,6 +1,8 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import {
   Title,
   Text,
@@ -13,50 +15,192 @@ import {
   SimpleGrid,
   ActionIcon,
   Avatar,
+  Button,
+  Loader,
+  Skeleton,
 } from '@mantine/core';
 import { AppLayout } from '@/components/layout/AppLayout';
-import {
-  IconPlayerPlayFilled,
-  IconChevronRight,
-  IconArrowLeft,
-  IconVolume,
-} from '@tabler/icons-react';
-import {
-  MicIcon
-} from '@/components/icons'
+import { WaveformAnimation } from '@/components/speaking/WaveformAnimation';
+import { ConversationBubble } from '@/components/speaking/ConversationBubble';
+import { SessionInsightsPanel } from '@/components/speaking/SessionInsightsPanel';
+import { MicButton } from '@/components/speaking/MicButton';
+import { IconArrowLeft, IconPlayerStop } from '@tabler/icons-react';
+import { getSession, processAudioTurn, endSession } from '@/lib/api/speaking';
+import { AudioRecorder, blobToBase64, createAudioAnalyser } from '@/lib/audio-recorder';
+import type { SpeakingSession, ConversationTurn } from '@/types/speaking';
 
-const SESSIONS = [
-  { id: '1', topic: 'Job Interview in Shanghai', date: 'Oct 28, 2023', accuracy: '94%', duration: '12:40', level: 'HSK 5' },
-  { id: '2', topic: 'Ordering Coffee in Beijing', date: 'Oct 26, 2023', accuracy: '88%', duration: '08:15', level: 'HSK 3' },
-  { id: '3', topic: 'Discussing Contemporary Art', date: 'Oct 24, 2023', accuracy: '91%', duration: '22:30', level: 'HSK 6' },
-  { id: '4', topic: 'Daily Life Dialogue', date: 'Oct 22, 2023', accuracy: '96%', duration: '05:50', level: 'HSK 2' },
-];
-
-export default function SessionDetailPage() {
+export default function ActiveSessionPage() {
   const params = useParams();
   const router = useRouter();
-  const id = params?.id as string;
+  const { data: authSession } = useSession();
+  const accessToken = authSession?.accessToken ?? '';
+  const sessionId = params?.id as string;
+  const userName = authSession?.user?.name?.split(' ')[0]?.toUpperCase() ?? 'YOU';
 
-  const currentSession = SESSIONS.find(s => s.id === id);
+  const [speakingSession, setSpeakingSession] = useState<SpeakingSession | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [sessionDuration, setSessionDuration] = useState(0);
+  const [ending, setEnding] = useState(false);
 
-  if (!currentSession) {
+  const recorderRef = useRef<AudioRecorder>(new AudioRecorder());
+  const analyserRef = useRef<ReturnType<typeof createAudioAnalyser> | null>(null);
+  const animFrameRef = useRef<number>();
+  const durationIntervalRef = useRef<ReturnType<typeof setInterval>>();
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  // Load session + start timer
+  useEffect(() => {
+    if (!accessToken || !sessionId) return;
+    let cancelled = false;
+
+    getSession(sessionId, accessToken)
+      .then((s) => {
+        if (!cancelled) {
+          setSpeakingSession(s);
+          setLoading(false);
+          // Auto-play first AI turn if audio exists
+          const firstAI = s.turns.find((t) => t.role === 'ai' && t.audioUrl);
+          if (firstAI?.audioUrl) {
+            new Audio(firstAI.audioUrl).play().catch(() => {});
+          }
+        }
+      })
+      .catch(() => { if (!cancelled) setLoading(false); });
+
+    durationIntervalRef.current = setInterval(() => {
+      setSessionDuration((prev) => prev + 1);
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(durationIntervalRef.current);
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [accessToken, sessionId]);
+
+  // Auto-scroll on new turns
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [speakingSession?.turns.length]);
+
+  async function handleMicDown() {
+    if (isProcessing || !speakingSession) return;
+    setIsRecording(true);
+    await recorderRef.current.start();
+
+    // Start analyser for waveform
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      analyserRef.current = createAudioAnalyser(stream);
+      const animate = () => {
+        setAudioLevel(analyserRef.current?.getLevel() ?? 0);
+        animFrameRef.current = requestAnimationFrame(animate);
+      };
+      animate();
+    } catch {
+      // Analyser is optional; recording proceeds without visualisation
+    }
+  }
+
+  async function handleMicUp() {
+    if (!isRecording || !speakingSession) return;
+    setIsRecording(false);
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    analyserRef.current?.disconnect();
+    analyserRef.current = null;
+    setAudioLevel(0);
+    setIsProcessing(true);
+
+    try {
+      const blob = await recorderRef.current.stop();
+      const base64 = await blobToBase64(blob);
+
+      // Optimistic placeholder
+      const placeholder: ConversationTurn = {
+        id: 'pending',
+        role: 'user',
+        text: '...',
+        toneCorrections: [],
+        timestamp: new Date().toISOString(),
+      };
+      setSpeakingSession((prev) =>
+        prev ? { ...prev, turns: [...prev.turns, placeholder] } : prev,
+      );
+
+      const aiTurn = await processAudioTurn(
+        speakingSession.id,
+        { audioBase64: base64, mimeType: 'audio/webm' },
+        accessToken,
+      );
+
+      // Refresh full session
+      const updated = await getSession(speakingSession.id, accessToken);
+      setSpeakingSession(updated);
+
+      // Auto-play AI response
+      if (aiTurn.audioUrl) {
+        new Audio(aiTurn.audioUrl).play().catch(() => {});
+      }
+    } catch (err) {
+      console.error('Processing failed:', err);
+      // Remove placeholder on error
+      setSpeakingSession((prev) =>
+        prev ? { ...prev, turns: prev.turns.filter((t) => t.id !== 'pending') } : prev,
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
+  async function handleEndSession() {
+    if (!speakingSession) return;
+    setEnding(true);
+    try {
+      await endSession(
+        speakingSession.id,
+        { durationSeconds: sessionDuration },
+        accessToken,
+      );
+      router.push(`/speaking/${speakingSession.id}/summary`);
+    } catch (err) {
+      console.error('Failed to end session:', err);
+      setEnding(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <AppLayout title={<Title order={1} fz={rem(24)} fw={800}>Loading session...</Title>}>
+        <SimpleGrid cols={{ base: 1, lg: 4 }} spacing={rem(40)}>
+          <Box style={{ gridColumn: 'span 3' }}>
+            <Skeleton h={rem(500)} radius={32} />
+          </Box>
+          <Stack gap={rem(24)}>
+            <Skeleton h={rem(220)} radius={24} />
+            <Skeleton h={rem(180)} radius={24} />
+          </Stack>
+        </SimpleGrid>
+      </AppLayout>
+    );
+  }
+
+  if (!speakingSession) {
     return (
       <AppLayout title="Session Not Found">
-        <Stack align="center" mt={rem(80)}>
-          <Text size="xl" fw={700}>Oops! Session not found.</Text>
-          <ActionIcon 
-            variant="filled" 
-            size="xl" 
-            radius="md" 
-            onClick={() => router.push('/speaking')}
-            className="bb-btn-primary"
-          >
-            <IconArrowLeft />
-          </ActionIcon>
+        <Stack align="center" mt={rem(80)} gap={rem(16)}>
+          <Text size="xl" fw={700}>Session not found.</Text>
+          <Button variant="subtle" onClick={() => router.push('/speaking')} leftSection={<IconArrowLeft size={18} />}>
+            Back to Speaking Studio
+          </Button>
         </Stack>
       </AppLayout>
     );
   }
+
+  const isCompleted = speakingSession.status === 'completed';
 
   return (
     <AppLayout
@@ -65,116 +209,125 @@ export default function SessionDetailPage() {
           <ActionIcon variant="subtle" color="gray" onClick={() => router.push('/speaking')}>
             <IconArrowLeft size={22} />
           </ActionIcon>
-          <Title order={1} fz={rem(24)} fw={800} c="var(--bb-on-surface)">
-            {currentSession.topic}
-          </Title>
+          <Stack gap={0}>
+            <Title order={1} fz={rem(22)} fw={800} c="var(--bb-on-surface)">
+              {speakingSession.topic}
+            </Title>
+            <Badge color={speakingSession.status === 'active' ? 'green' : 'gray'} variant="dot" size="xs" fw={700}>
+              {speakingSession.status === 'active' ? 'Live' : 'Completed'}
+            </Badge>
+          </Stack>
         </Group>
       }
     >
-      <SimpleGrid cols={{ base: 1, lg: 4 }} spacing={rem(40)}>
-        {/* Studio View (Spans 3 columns) */}
+      <SimpleGrid cols={{ base: 1, lg: 4 }} spacing={rem(32)}>
+        {/* Main conversation area — spans 3 cols */}
         <Box style={{ gridColumn: 'span 3' }}>
-          <Stack gap={rem(40)}>
-            {/* AI Interaction Area */}
+          <Stack gap={rem(32)}>
             <Card
               radius={32}
-              p={rem(64)}
+              p={rem(48)}
               style={{
                 backgroundColor: 'white',
                 backgroundImage: 'radial-gradient(circle at top right, rgba(21, 66, 18, 0.03) 0%, transparent 70%)',
-                boxShadow: '0 4px 24px rgba(0,0,0,0.02)'
+                boxShadow: '0 4px 24px rgba(0,0,0,0.02)',
               }}
             >
-              <Stack align="center" gap={rem(48)}>
-                <Stack align="center" gap={rem(16)}>
-                  <Avatar size={rem(120)} radius={120} src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=400&fit=crop" style={{ border: `${rem(4)} solid var(--bb-primary)` }} />
+              <Stack align="center" gap={rem(32)}>
+                {/* Avatar */}
+                <Stack align="center" gap={rem(12)}>
+                  <Avatar
+                    size={rem(100)}
+                    radius={100}
+                    src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=400&fit=crop"
+                    style={{ border: `${rem(3)} solid var(--bb-primary)` }}
+                  />
                   <Box style={{ textAlign: 'center' }}>
-                    <Text fw={800} fz="lg">Master Ling AI</Text>
-                    <Text fz="xs" fw={700} c="var(--bb-primary)">PERSONAL SCHOLAR</Text>
-                  </Box>
-                </Stack>
-
-                {/* Waveform Mockup */}
-                <Stack align="center" gap={rem(12)} w="100%" maw={400}>
-                  <Group gap={rem(4)} justify="center" h={rem(40)} align="flex-end">
-                    {[0.4, 0.6, 0.9, 0.7, 0.5, 0.8, 1, 0.6, 0.4, 0.7, 0.9, 0.5, 0.3, 0.6, 0.8].map((v, i) => (
-                      <Box key={i} style={{ width: rem(4), height: `${v * 100}%`, backgroundColor: 'var(--bb-primary)', borderRadius: 2, opacity: 0.8 }} />
-                    ))}
-                  </Group>
-                  <Text fz="xs" fw={700} c="var(--bb-outline)">Listening to your pronunciation...</Text>
-                </Stack>
-
-                {/* Transcription Area */}
-                <Stack gap={rem(32)} w="100%">
-                  <Box p={rem(24)} bg="var(--bb-surface-container-low)" style={{ borderRadius: 20 }}>
-                    <Group justify="space-between" mb={rem(12)}>
-                      <Badge variant="dot" color="blue" size="sm">MASTER LING</Badge>
-                      <ActionIcon variant="subtle" size="sm"><IconVolume size={16} /></ActionIcon>
-                    </Group>
-                    <Text className="hanzi" fz={rem(22)} fw={500} mb={rem(8)}>你要点什么咖啡？</Text>
-                    <Text fz="sm" fw={600} c="var(--bb-on-surface-variant)" fs="italic">Nǐ yào diǎn shénme kāfēi? (What coffee would you like to order?)</Text>
-                  </Box>
-
-                  <Box p={rem(24)} bg="rgba(21, 66, 18, 0.03)" style={{ borderRadius: 20, border: '1px solid rgba(21, 66, 18, 0.08)' }}>
-                    <Group justify="space-between" mb={rem(12)}>
-                      <Badge variant="dot" color="green" size="sm">YOU (ALEX)</Badge>
-                    </Group>
-                    <Text className="hanzi" fz={rem(22)} fw={500} mb={rem(8)}>
-                      我要一杯<span style={{ color: '#d9480f', textDecoration: 'underline' }}>美式</span>咖啡。
+                    <Text fz="xs" fw={800} tt="uppercase" style={{ letterSpacing: rem(2) }} c="var(--bb-outline)">
+                      Master Ling AI
                     </Text>
-                    <Text fz="sm" fw={600} c="var(--bb-on-surface-variant)">Wǒ yào yī bēi měishì kāfēi.</Text>
-
-                    <Card mt={rem(16)} p={rem(12)} radius="md" style={{ backgroundColor: 'rgba(217, 72, 15, 0.05)', border: '1px solid rgba(217, 72, 15, 0.1)' }}>
-                      <Group gap="xs">
-                        <MicIcon size={14} color="#d9480f" />
-                        <Text fz={rem(12)} fw={700} c="#d9480f">TONE CORRECTION: "Měishì" (3rd tone) was pronounced slightly as 2nd tone.</Text>
-                      </Group>
-                    </Card>
+                    <Text fz="xs" fw={700} c="var(--bb-primary)" tt="uppercase" style={{ letterSpacing: rem(1.5) }}>
+                      Personal Scholar
+                    </Text>
                   </Box>
+                </Stack>
+
+                {/* Waveform */}
+                <Stack align="center" gap={rem(8)} w="100%" maw={360}>
+                  <WaveformAnimation isActive={isRecording || isProcessing} level={audioLevel} />
+                  <Text fz="xs" fw={700} c="var(--bb-outline)">
+                    {isRecording
+                      ? 'Listening to your pronunciation...'
+                      : isProcessing
+                      ? 'Processing your response...'
+                      : 'Ready to listen'}
+                  </Text>
+                </Stack>
+
+                {/* Conversation turns */}
+                <Stack gap={rem(16)} w="100%">
+                  {speakingSession.turns.map((turn) => (
+                    <ConversationBubble
+                      key={turn.id}
+                      turn={turn}
+                      userName={userName}
+                    />
+                  ))}
+                  {isProcessing && speakingSession.turns[speakingSession.turns.length - 1]?.id === 'pending' && (
+                    <Group justify="center" py={rem(8)}>
+                      <Loader size="xs" color="var(--bb-primary)" />
+                    </Group>
+                  )}
+                  <div ref={chatBottomRef} />
                 </Stack>
               </Stack>
             </Card>
 
             {/* Controls */}
-            <Group justify="center" gap="xl">
-              <ActionIcon size={rem(64)} radius="xl" variant="light" color="gray"><IconVolume size={24} /></ActionIcon>
-              <ActionIcon size={rem(80)} radius="xl" className="bb-btn-primary" style={{ boxShadow: '0 8px 24px rgba(21, 66, 18, 0.3)' }}>
-                <MicIcon size={32} />
-              </ActionIcon>
-              <ActionIcon size={rem(64)} radius="xl" variant="light" color="gray" onClick={() => router.push('/speaking')}><IconPlayerPlayFilled size={24} /></ActionIcon>
-            </Group>
+            {!isCompleted && (
+              <Group justify="center" gap={rem(32)} pb={rem(16)}>
+                <MicButton
+                  isRecording={isRecording}
+                  isProcessing={isProcessing}
+                  onMouseDown={handleMicDown}
+                  onMouseUp={handleMicUp}
+                  onTouchStart={handleMicDown}
+                  onTouchEnd={handleMicUp}
+                />
+                <Button
+                  variant="light"
+                  color="red"
+                  radius={12}
+                  h={rem(48)}
+                  leftSection={ending ? <Loader size={14} /> : <IconPlayerStop size={16} />}
+                  disabled={ending || isRecording || isProcessing}
+                  onClick={handleEndSession}
+                >
+                  End Session
+                </Button>
+              </Group>
+            )}
+
+            {isCompleted && (
+              <Group justify="center">
+                <Button
+                  className="bb-btn-primary"
+                  radius={12}
+                  onClick={() => router.push(`/speaking/${speakingSession.id}/summary`)}
+                >
+                  View Summary
+                </Button>
+              </Group>
+            )}
           </Stack>
         </Box>
 
-        {/* Session Overview Sidebar */}
-        <Stack gap={rem(32)}>
-          <Card radius={24} p={rem(32)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
-            <Title order={3} fz={rem(18)} fw={800} mb={rem(24)}>Session Insights</Title>
-            <Stack gap={rem(24)}>
-              <Group justify="space-between">
-                <Text fz="sm" fw={700}>Accuracy Score</Text>
-                <Text fz="sm" fw={800} c="var(--bb-primary)">{currentSession.accuracy}</Text>
-              </Group>
-              <Group justify="space-between">
-                <Text fz="sm" fw={700}>Fluency</Text>
-                <Text fz="sm" fw={800} c="var(--bb-primary)">Great</Text>
-              </Group>
-              <Group justify="space-between">
-                <Text fz="sm" fw={700}>Duration</Text>
-                <Text fz="sm" fw={800} c="var(--bb-outline)">{currentSession.duration}</Text>
-              </Group>
-            </Stack>
-          </Card>
-
-          <Card radius={24} p={rem(32)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
-            <Title order={3} fz={rem(18)} fw={800} mb={rem(24)}>Top Vocabulary Used</Title>
-            <Group gap="xs">
-              {['咖啡 (Coffee)', '美式 (Americano)', '杯 (Cup)', '点 (Order)'].map(word => (
-                <Badge key={word} color="gray" variant="light" radius="sm" fw={700} px={rem(10)} py={rem(12)}>{word}</Badge>
-              ))}
-            </Group>
-          </Card>
-        </Stack>
+        {/* Insights sidebar */}
+        <SessionInsightsPanel
+          insights={speakingSession.insights}
+          currentDuration={sessionDuration}
+          topVocabulary={speakingSession.topVocabulary ?? []}
+        />
       </SimpleGrid>
     </AppLayout>
   );

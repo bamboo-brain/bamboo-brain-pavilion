@@ -406,7 +406,6 @@ export default function StudyCenterPage() {
       <CreateDeckModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
-        documents={documents}
         onCreated={(deck) => {
           setCreateModalOpen(false);
           router.push(`/study-center/${deck.id}`);
