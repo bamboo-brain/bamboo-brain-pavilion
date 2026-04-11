@@ -30,6 +30,7 @@ import {
   IconSchool,
 } from '@tabler/icons-react';
 import { NotificationList } from '@/components/dashboard/NotificationList';
+import { NotificationDrawer } from '@/components/notifications/NotificationDrawer';
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { IconLogout } from '@tabler/icons-react';
@@ -47,6 +48,8 @@ export function AppLayout({ children, title }: { children: React.ReactNode; titl
   const router = useRouter();
   const pathname = usePathname();
   const { data: session } = useSession();
+  const [notificationPopoverOpened, setNotificationPopoverOpened] = useState(false);
+  const [notificationDrawerOpened, setNotificationDrawerOpened] = useState(false);
 
   const displayName = session?.user?.name ?? 'Scholar';
   const hskLevel = session?.user?.hskLevel;
@@ -176,7 +179,7 @@ export function AppLayout({ children, title }: { children: React.ReactNode; titl
                 }}
               />
               <Group gap="md">
-                <Popover width={340} position="bottom-end" shadow="lg" radius={rem(24)} offset={12} transitionProps={{ transition: 'pop-top-right' }}>
+                <Popover width={340} position="bottom-end" shadow="lg" radius={rem(24)} offset={12} transitionProps={{ transition: 'pop-top-right' }} opened={notificationPopoverOpened} onChange={setNotificationPopoverOpened}>
                   <Popover.Target>
                     <ActionIcon
                       variant="subtle"
@@ -184,6 +187,7 @@ export function AppLayout({ children, title }: { children: React.ReactNode; titl
                       size="xl"
                       color="var(--bb-outline)"
                       styles={{ root: { backgroundColor: 'var(--bb-surface-container-lowest)', color: 'var(--bb-on-surface-variant)' } }}
+                      onClick={() => setNotificationPopoverOpened(o => !o)}
                     >
                       <Indicator color="var(--bb-primary)" size={10} offset={2} processing>
                         <IconBell size={22} />
@@ -191,7 +195,10 @@ export function AppLayout({ children, title }: { children: React.ReactNode; titl
                     </ActionIcon>
                   </Popover.Target>
                   <Popover.Dropdown p={0} style={{ border: 'none', backgroundColor: 'var(--bb-surface-container-lowest)', boxShadow: '0 20px 40px rgba(0,0,0,0.1)' }}>
-                    <NotificationList />
+                    <NotificationList onDrawerOpen={() => {
+                      setNotificationPopoverOpened(false);
+                      setNotificationDrawerOpened(true);
+                    }} />
                   </Popover.Dropdown>
                 </Popover>
                 <Popover position="bottom-end" shadow="lg" radius={rem(16)} offset={12} transitionProps={{ transition: 'pop-top-right' }}>
@@ -233,6 +240,8 @@ export function AppLayout({ children, title }: { children: React.ReactNode; titl
           {children}
         </Stack>
       </AppShell.Main>
+
+      <NotificationDrawer opened={notificationDrawerOpened} onClose={() => setNotificationDrawerOpened(false)} />
     </AppShell>
   );
 }

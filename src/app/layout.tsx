@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Manrope, Inter } from 'next/font/google';
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps, createTheme } from '@mantine/core';
 import AuthProvider from '@/components/AuthProvider';
+import { NotificationProvider } from '@/context/NotificationContext';
 import '@mantine/core/styles.css';
 import './globals.css';
 
@@ -78,7 +79,9 @@ export default function RootLayout({
       <body suppressHydrationWarning={true}>
         <AuthProvider>
           <MantineProvider theme={theme} defaultColorScheme="light">
-            {children}
+            <NotificationProvider>
+              {children}
+            </NotificationProvider>
           </MantineProvider>
         </AuthProvider>
       </body>
