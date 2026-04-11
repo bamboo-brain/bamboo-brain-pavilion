@@ -11,6 +11,7 @@ import {
   Card,
   Box,
   Badge,
+  Button,
   rem,
   ActionIcon,
   Progress,
@@ -32,7 +33,9 @@ import {
   IconCircleCheckFilled,
   IconAlertCircleFilled,
   IconBook2,
+  IconCards,
 } from '@tabler/icons-react';
+import { CreateDeckModal } from '@/components/flashcards/CreateDeckModal';
 import {
   getDocument,
   getDocumentStatus,
@@ -275,8 +278,10 @@ function ProcessingCard({ doc }: { doc: Document }) {
 
 function ReadyView({ doc }: { doc: Document }) {
   const { data: session } = useSession();
+  const router = useRouter();
   const accessToken = session?.accessToken ?? '';
   const sortedWords = [...doc.extractedWords].sort((a, b) => b.frequency - a.frequency);
+  const [createDeckOpen, setCreateDeckOpen] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
   const [wordTimings, setWordTimings] = useState<WordTiming[]>([]);
   const [audioUrl, setAudioUrl] = useState<string>('');
@@ -393,6 +398,7 @@ function ReadyView({ doc }: { doc: Document }) {
   }, [currentPlaybackTime]);
 
   return (
+    <>
     <SimpleGrid cols={{ base: 1, lg: 3 }} spacing={rem(32)} style={{ alignItems: 'start' }}>
       {/* Audio Player — only for audio files with loaded URL */}
       {doc.fileType === 'audio' && (
@@ -569,16 +575,29 @@ function ReadyView({ doc }: { doc: Document }) {
         {sortedWords.length > 0 && (
           <Card radius={24} p={rem(32)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
             <Group justify="space-between" mb={rem(20)}>
-              <Title order={3} fz={rem(16)} fw={800} c="var(--bb-on-surface)">Vocabulary</Title>
-              <Box p={rem(8)} style={{ borderRadius: 8, backgroundColor: 'var(--bb-surface-container-low)', color: 'var(--bb-primary)', display: 'flex' }}>
-                <IconBook2 size={18} />
-              </Box>
+              <Group gap={rem(8)}>
+                <Box p={rem(8)} style={{ borderRadius: 8, backgroundColor: 'var(--bb-surface-container-low)', color: 'var(--bb-primary)', display: 'flex' }}>
+                  <IconBook2 size={18} />
+                </Box>
+                <Title order={3} fz={rem(16)} fw={800} c="var(--bb-on-surface)">Vocabulary</Title>
+              </Group>
+              <Button
+                size="xs"
+                radius={8}
+                fw={800}
+                variant="light"
+                color="green"
+                leftSection={<IconCards size={14} />}
+                onClick={() => setCreateDeckOpen(true)}
+              >
+                Create Deck
+              </Button>
             </Group>
             <ScrollArea h={rem(360)} offsetScrollbars>
               <Stack gap={rem(4)}>
-                {sortedWords.map((word) => (
+                {sortedWords.map((word, idx) => (
                   <Box
-                    key={word.word}
+                    key={`${word.word}-${idx}`}
                     p={rem(14)}
                     style={{
                       borderRadius: 14,
@@ -607,6 +626,18 @@ function ReadyView({ doc }: { doc: Document }) {
         )}
       </Stack>
     </SimpleGrid>
+
+    <CreateDeckModal
+      isOpen={createDeckOpen}
+      onClose={() => setCreateDeckOpen(false)}
+      defaultDocumentId={doc.id}
+      defaultDocumentName={doc.fileName}
+      onCreated={(deck) => {
+        setCreateDeckOpen(false);
+        router.push(`/study-center/${deck.id}`);
+      }}
+    />
+    </>
   );
 }
 

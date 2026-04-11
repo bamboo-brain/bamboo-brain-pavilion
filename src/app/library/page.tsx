@@ -37,7 +37,11 @@ import {
   IconTrash,
   IconChevronLeft,
   IconChevronRight,
+  IconCards,
+  IconListCheck,
 } from '@tabler/icons-react';
+import { CreateDeckModal } from '@/components/flashcards/CreateDeckModal';
+import { QuizSetupModal } from '@/components/quiz/QuizSetupModal';
 import {
   uploadDocument,
   listDocuments,
@@ -129,6 +133,9 @@ export default function LibraryPage() {
 
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [createDeckDoc, setCreateDeckDoc] = useState<{ id: string; name: string } | null>(null);
+  const [quizDoc, setQuizDoc] = useState<{ id: string; name: string } | null>(null);
 
   // Main fetch effect
   useEffect(() => {
@@ -573,6 +580,23 @@ export default function LibraryPage() {
                                 </ActionIcon>
                               </Menu.Target>
                               <Menu.Dropdown>
+                                {doc.extractionStatus === 'ready' && (
+                                  <>
+                                    <Menu.Item
+                                      leftSection={<IconListCheck size={14} />}
+                                      onClick={() => setQuizDoc({ id: doc.id, name: doc.fileName })}
+                                    >
+                                      Start Quiz
+                                    </Menu.Item>
+                                    <Menu.Item
+                                      leftSection={<IconCards size={14} />}
+                                      onClick={() => setCreateDeckDoc({ id: doc.id, name: doc.fileName })}
+                                    >
+                                      Create Flashcard Deck
+                                    </Menu.Item>
+                                    <Menu.Divider />
+                                  </>
+                                )}
                                 <Menu.Item
                                   color="red"
                                   leftSection={<IconTrash size={14} />}
@@ -623,6 +647,27 @@ export default function LibraryPage() {
           </Card>
         </Stack>
       </Stack>
+
+      {/* Start Quiz Modal */}
+      <QuizSetupModal
+        isOpen={!!quizDoc}
+        onClose={() => setQuizDoc(null)}
+        sourceType="document"
+        sourceId={quizDoc?.id ?? ''}
+        sourceName={quizDoc?.name ?? ''}
+      />
+
+      {/* Create Flashcard Deck Modal */}
+      <CreateDeckModal
+        isOpen={!!createDeckDoc}
+        onClose={() => setCreateDeckDoc(null)}
+        defaultDocumentId={createDeckDoc?.id}
+        defaultDocumentName={createDeckDoc?.name}
+        onCreated={(deck) => {
+          setCreateDeckDoc(null);
+          router.push(`/study-center/${deck.id}`);
+        }}
+      />
 
       {/* Delete Confirmation Modal */}
       <Modal
