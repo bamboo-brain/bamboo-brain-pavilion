@@ -477,10 +477,10 @@ export default function DashboardPage() {
                   fmt: (v: number, g: number) => `${v}/${g}`,
                 },
                 {
-                  label: `${MINUTES_GOAL}m Active Study`,
+                  label: `Active Study`,
                   actual: userStats?.studyMinutesToday ?? 0,
                   goal: MINUTES_GOAL,
-                  fmt: (v: number) => `${v}m`,
+                  fmt: (v: number, g: number) => `${v}/${g}m`,
                 },
               ].map((item) => {
                 const pct = Math.min(100, Math.round((item.actual / item.goal) * 100));
