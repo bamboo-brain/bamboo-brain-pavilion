@@ -19,6 +19,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { SessionComplete } from '@/components/flashcards/SessionComplete';
 import { getDueCards, reviewCard } from '@/lib/flashcards';
 import { previewNextInterval, formatInterval } from '@/lib/sm2';
+import { recordActivity } from '@/lib/api/planner';
 import type { Flashcard } from '@/types/flashcard';
 
 type Phase = 'question' | 'answer' | 'complete';
@@ -52,6 +53,7 @@ export default function StudySessionPage() {
   const [sessionResults, setSessionResults] = useState<{ cardId: string; grade: number; word: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [grading, setGrading] = useState(false);
+  const sessionStartRef = useRef<number>(Date.now());
 
   // clear any pending timers on unmount
   useEffect(() => () => { flipTimers.current.forEach(clearTimeout); }, []);
@@ -94,6 +96,8 @@ export default function StudySessionPage() {
       ]);
       if (currentIndex + 1 >= dueCards.length) {
         setPhase('complete');
+        const minutesSpent = Math.max(1, Math.round((Date.now() - sessionStartRef.current) / 60000));
+        recordActivity({ activityType: 'flashcard_review', minutesSpent, itemsCompleted: dueCards.length }, accessToken).catch(() => {});
       } else {
         setCurrentIndex((prev) => prev + 1);
         setPhase('question');

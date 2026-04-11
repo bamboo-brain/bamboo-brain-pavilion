@@ -27,6 +27,7 @@ import { SessionInsightsPanel } from '@/components/speaking/SessionInsightsPanel
 import { MicButton } from '@/components/speaking/MicButton';
 import { IconArrowLeft, IconPlayerStop, IconAlertCircle } from '@tabler/icons-react';
 import { getSession, processAudioTurn, endSession } from '@/lib/api/speaking';
+import { recordActivity } from '@/lib/api/planner';
 import { AudioRecorder, blobToBase64, convertToWav, createAudioAnalyser } from '@/lib/audio-recorder';
 import type { SpeakingSession, ConversationTurn } from '@/types/speaking';
 
@@ -194,6 +195,8 @@ export default function ActiveSessionPage() {
         { durationSeconds: sessionDuration },
         accessToken,
       );
+      const userTurns = speakingSession.turns.filter((t) => t.role === 'user').length;
+      recordActivity({ activityType: 'speaking', minutesSpent: Math.max(1, Math.round(sessionDuration / 60)), itemsCompleted: userTurns, resourceId: speakingSession.id }, accessToken).catch(() => {});
       router.push(`/speaking/${speakingSession.id}/summary`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to end session';

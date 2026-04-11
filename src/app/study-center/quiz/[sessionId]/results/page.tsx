@@ -20,6 +20,7 @@ import { IconCheck, IconX, IconClock, IconBook2 } from '@tabler/icons-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { QuizSetupModal } from '@/components/quiz/QuizSetupModal';
 import { getSession } from '@/lib/quiz';
+import { recordActivity } from '@/lib/api/planner';
 import type { QuizSession } from '@/types/quiz';
 
 function getScoreLabel(score: number): { label: string; color: string } {
@@ -47,7 +48,13 @@ export default function QuizResultsPage() {
   useEffect(() => {
     if (!accessToken || !sessionId) return;
     getSession(sessionId, accessToken)
-      .then(setQuizSession)
+      .then((s) => {
+        setQuizSession(s);
+        if (s.status === 'completed') {
+          const minutesSpent = Math.max(1, Math.round((s.timeSpentSeconds ?? 0) / 60));
+          recordActivity({ activityType: 'quiz', minutesSpent, itemsCompleted: s.totalQuestions, resourceId: s.id }, accessToken).catch(() => {});
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [accessToken, sessionId]);

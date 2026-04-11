@@ -15,6 +15,7 @@ declare module 'next-auth' {
       isOnboardingComplete?: boolean;
     };
     accessToken?: string;
+    googleAccessToken?: string;
   }
 }
 
@@ -24,6 +25,8 @@ declare module 'next-auth/jwt' {
     accessToken?: string;
     hskLevel?: number | null;
     isOnboardingComplete?: boolean;
+    googleAccessToken?: string;
+    googleRefreshToken?: string;
   }
 }
 
@@ -71,6 +74,13 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          scope: 'openid email profile https://www.googleapis.com/auth/calendar.events',
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
     }),
     AzureADProvider({
       clientId: process.env.AZURE_AD_CLIENT_ID!,
@@ -93,6 +103,12 @@ export const authOptions: NextAuthOptions = {
         token.accessToken = u.accessToken;
         token.hskLevel = u.hskLevel;
         token.isOnboardingComplete = u.isOnboardingComplete;
+      }
+
+      // Store Google OAuth tokens for Calendar API access
+      if (account?.provider === 'google') {
+        token.googleAccessToken = account.access_token;
+        token.googleRefreshToken = account.refresh_token;
       }
 
       // On first sign-in via OAuth (Google / Azure AD), upsert the user in the backend
@@ -143,6 +159,7 @@ export const authOptions: NextAuthOptions = {
         session.user.isOnboardingComplete = token.isOnboardingComplete;
       }
       session.accessToken = token.accessToken;
+      session.googleAccessToken = token.googleAccessToken;
       return session;
     },
   },

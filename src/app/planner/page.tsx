@@ -1,87 +1,110 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 import {
-  Title,
-  Text,
-  Stack,
-  Group,
-  Card,
-  Button,
-  Box,
-  Badge,
-  rem,
-  SimpleGrid,
-  ActionIcon,
-  Tooltip,
-  Paper,
+  Title, Text, Stack, Group, Card, Button, Box, rem, SimpleGrid,
+  ActionIcon, Skeleton,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { AppLayout } from '@/components/layout/AppLayout';
-import {
-  IconCalendar,
-  IconPlus,
-  IconChevronLeft,
-  IconChevronRight,
-  IconCheck,
-  IconClock,
-  IconBook,
-  IconTarget,
-} from '@tabler/icons-react';
+import { CalendarGrid } from '@/components/planner/CalendarGrid';
+import { DayAgendaPanel } from '@/components/planner/DayAgendaPanel';
+import { HskProgressCard } from '@/components/planner/HskProgressCard';
+import { AdaptationBanner } from '@/components/planner/AdaptationBanner';
+import { CreatePlanWizard } from '@/components/planner/CreatePlanWizard';
+import { IconChevronLeft, IconChevronRight, IconPlus } from '@tabler/icons-react';
+import { getCalendarEvents, getUserStats } from '@/lib/api/planner';
+import type { CalendarResponse, StudyEvent, StudyPlan } from '@/types/planner';
+import type { UserStats } from '@/types/stats';
 
-const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-
-const CALENDAR_DAYS = [
-  { day: 28, currentMonth: false, events: [] },
-  { day: 29, currentMonth: false, events: [] },
-  { day: 30, currentMonth: false, events: [] },
-  { day: 31, currentMonth: false, events: [] },
-  { day: 1, currentMonth: true, events: [{ type: 'study', title: 'HSK 4 Grammar' }] },
-  { day: 2, currentMonth: true, events: [] },
-  { day: 3, currentMonth: true, events: [{ type: 'speaking', title: 'Daily Dialogue' }] },
-  { day: 4, currentMonth: true, events: [] },
-  { day: 5, currentMonth: true, events: [] },
-  { day: 6, currentMonth: true, events: [{ type: 'quiz', title: 'Weekly Review' }] },
-  { day: 7, currentMonth: true, events: [] },
-  { day: 8, currentMonth: true, events: [] },
-  { day: 9, currentMonth: true, events: [] },
-  { day: 10, currentMonth: true, events: [{ type: 'study', title: 'Business Chinese' }] },
-  { day: 11, currentMonth: true, events: [] },
-  { day: 12, currentMonth: true, events: [] },
-  { day: 13, currentMonth: true, events: [] },
-  { day: 14, currentMonth: true, events: [] },
-  { day: 15, currentMonth: true, events: [] },
-  { day: 16, currentMonth: true, events: [] },
-  { day: 17, currentMonth: true, events: [] },
-  { day: 18, currentMonth: true, events: [] },
-  { day: 19, currentMonth: true, events: [] },
-  { day: 20, currentMonth: true, events: [] },
-  { day: 21, currentMonth: true, events: [] },
-  { day: 22, currentMonth: true, events: [] },
-  { day: 23, currentMonth: true, events: [] },
-  { day: 24, currentMonth: true, events: [] },
-  { day: 25, currentMonth: true, events: [] },
-  { day: 26, currentMonth: true, events: [] },
-  { day: 27, currentMonth: true, events: [] },
-  { day: 28, currentMonth: true, events: [] },
-  { day: 29, currentMonth: true, events: [] },
-  { day: 30, currentMonth: true, events: [] },
-  { day: 1, currentMonth: false, events: [] },
-];
-
-const GOALS = [
-  { id: '1', title: 'Master 100 new HSK 4 characters', category: 'VOCABULARY', progress: 85, color: 'var(--bb-primary)' },
-  { id: '2', title: 'Complete 2 hours of listening practice', category: 'LISTENING', progress: 45, color: '#2a5185' },
-  { id: '3', title: 'Draft a sample business introduction', category: 'WRITING', progress: 10, color: '#d9480f' },
-];
-
-const UPCOMING_TASKS = [
-  { time: '09:00 AM', title: 'Morning Calligraphy', desc: 'Focusing on radical ⺡ (water) variations.', icon: <IconBook size={18} /> },
-  { time: '02:00 PM', title: 'Speaking Session', desc: 'Job Interview practice with AI tutor.', icon: <IconTarget size={18} /> },
-  { time: '07:30 PM', title: 'Weekly Recap Quiz', desc: 'Review HSK 4 grammar points.', icon: <IconCheck size={18} /> },
+const MONTH_NAMES = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
 ];
 
 export default function PlannerPage() {
-  const [currentDate, setCurrentDate] = useState(new Date(2023, 9, 1)); // Oct 2023
+  const { data: session } = useSession();
+  const accessToken = session?.accessToken ?? '';
+  const userHskLevel = session?.user?.hskLevel ?? 1;
+
+  const today = new Date();
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
+  const [selectedDate, setSelectedDate] = useState(today.toISOString().split('T')[0]);
+  const [calendarData, setCalendarData] = useState<CalendarResponse | null>(null);
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
+  const [plan, setPlan] = useState<StudyPlan | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastAgentNote, setLastAgentNote] = useState<string | undefined>(undefined);
+  const [wizardOpened, { open: openWizard, close: closeWizard }] = useDisclosure(false);
+
+  const loadCalendar = useCallback(async () => {
+    if (!accessToken) return;
+    setLoading(true);
+    const [calResult, statsResult] = await Promise.allSettled([
+      getCalendarEvents(currentYear, currentMonth, accessToken),
+      getUserStats(accessToken),
+    ]);
+    if (calResult.status === 'fulfilled') {
+      setCalendarData(calResult.value);
+      setLastAgentNote(calResult.value.lastAgentNote);
+    }
+    if (statsResult.status === 'fulfilled') setUserStats(statsResult.value);
+    setLoading(false);
+  }, [accessToken, currentYear, currentMonth]);
+
+  useEffect(() => {
+    loadCalendar();
+  }, [loadCalendar]);
+
+  const prevMonth = () => {
+    if (currentMonth === 1) { setCurrentMonth(12); setCurrentYear((y) => y - 1); }
+    else setCurrentMonth((m) => m - 1);
+  };
+  const nextMonth = () => {
+    if (currentMonth === 12) { setCurrentMonth(1); setCurrentYear((y) => y + 1); }
+    else setCurrentMonth((m) => m + 1);
+  };
+  const goToToday = () => {
+    const now = new Date();
+    setCurrentYear(now.getFullYear());
+    setCurrentMonth(now.getMonth() + 1);
+    setSelectedDate(now.toISOString().split('T')[0]);
+  };
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, StudyEvent[]>();
+    calendarData?.events.forEach((event) => {
+      const key = event.date.split('T')[0];
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(event);
+    });
+    return map;
+  }, [calendarData?.events]);
+
+  const selectedEvents = eventsByDate.get(selectedDate) ?? [];
+
+  function handleEventUpdate(eventId: string, status: string) {
+    setCalendarData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        events: prev.events.map((e) =>
+          e.id === eventId
+            ? { ...e, status: status as StudyEvent['status'], completedAt: status === 'completed' ? new Date().toISOString() : e.completedAt }
+            : e,
+        ),
+      };
+    });
+  }
+
+  const showAdaptationBanner = calendarData?.hasPlan && calendarData.planId && (
+    calendarData.adaptationDue && new Date(calendarData.adaptationDue) <= new Date()
+  );
+
+  const hskProgress = userStats?.hskProgress ?? [];
+  const targetLevel = calendarData?.goal?.targetHskLevel ?? Math.min(userHskLevel + 1, 6);
 
   return (
     <AppLayout
@@ -90,179 +113,148 @@ export default function PlannerPage() {
           <Title order={1} fz={rem(32)} fw={800} c="var(--bb-on-surface)" style={{ letterSpacing: rem(-0.5) }}>
             Study Planner
           </Title>
-          <Button 
-            className="bb-btn-primary" 
-            leftSection={<IconPlus size={20} />} 
-            radius={12} 
+          <Button
+            className="bb-btn-primary"
+            leftSection={<IconPlus size={20} />}
+            radius={12}
             h={rem(54)}
             px={rem(32)}
+            onClick={openWizard}
           >
             Create New Plan
           </Button>
         </Group>
       }
     >
-      <SimpleGrid cols={{ base: 1, lg: 3 }} spacing={rem(40)}>
-        {/* Main Content Area (Spans 2 columns) */}
-        <Box style={{ gridColumn: 'span 2' }}>
-          <Stack gap={rem(48)}>
-            {/* Calendar View */}
+      <Stack gap={rem(32)}>
+        {/* Adaptation banner */}
+        {showAdaptationBanner && calendarData?.planId && (
+          <AdaptationBanner
+            planId={calendarData.planId}
+            accessToken={accessToken}
+            lastAgentNote={lastAgentNote}
+            onAdapted={(note) => {
+              setLastAgentNote(note);
+              loadCalendar();
+            }}
+          />
+        )}
+
+        {/* Nudge: no activity in 2 days */}
+        {userStats?.lastActivityDate && (() => {
+          const daysSince = Math.floor((Date.now() - new Date(userStats.lastActivityDate).getTime()) / 86400000);
+          if (daysSince >= 2) {
+            return (
+              <Box p={rem(16)} style={{ borderRadius: rem(16), backgroundColor: 'rgba(217,72,15,0.06)', border: '1px solid rgba(217,72,15,0.2)' }}>
+                <Text fz="sm" fw={700} c="#c2410c">
+                  🔥 You haven&apos;t studied in {daysSince} days — your streak is at risk! Open a session to keep it going.
+                </Text>
+              </Box>
+            );
+          }
+          return null;
+        })()}
+
+        <SimpleGrid cols={{ base: 1, lg: 3 }} spacing={rem(32)}>
+          {/* Calendar — 2 cols */}
+          <Box style={{ gridColumn: 'span 2' }}>
             <Card radius={32} p={rem(32)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
-              <Stack gap={rem(32)}>
-                <Group justify="space-between">
+              <Stack gap={rem(24)}>
+                <Group justify="space-between" align="flex-end">
                   <Box>
-                    <Title order={2} fz={rem(24)} fw={800}>October 2023</Title>
+                    <Title order={2} fz={rem(24)} fw={800}>
+                      {MONTH_NAMES[currentMonth - 1]} {currentYear}
+                    </Title>
                     <Text fz="sm" fw={600} c="var(--bb-outline)">Your scholarly journey this month</Text>
                   </Box>
                   <Group gap="xs">
-                    <ActionIcon variant="subtle" size="lg" radius="md"><IconChevronLeft size={20} /></ActionIcon>
-                    <Button variant="light" color="gray" radius="md" fw={800}>Today</Button>
-                    <ActionIcon variant="subtle" size="lg" radius="md"><IconChevronRight size={20} /></ActionIcon>
+                    <ActionIcon variant="subtle" size="lg" radius="md" onClick={prevMonth}>
+                      <IconChevronLeft size={20} />
+                    </ActionIcon>
+                    <Button variant="light" color="gray" radius="md" fw={800} size="sm" onClick={goToToday}>
+                      Today
+                    </Button>
+                    <ActionIcon variant="subtle" size="lg" radius="md" onClick={nextMonth}>
+                      <IconChevronRight size={20} />
+                    </ActionIcon>
                   </Group>
                 </Group>
 
-                <Box style={{ overflowX: 'auto' }}>
-                  <SimpleGrid cols={7} spacing={rem(12)} verticalSpacing={rem(12)} style={{ minWidth: 700 }}>
-                    {WEEKDAYS.map(day => (
-                      <Text key={day} fz={rem(11)} fw={800} c="var(--bb-outline)" ta="center" lts={1}>
-                        {day}
-                      </Text>
-                    ))}
-                    {CALENDAR_DAYS.map((day, idx) => (
-                      <Paper
-                        key={idx}
-                        radius={16}
-                        p={rem(12)}
-                        style={{
-                          height: rem(120),
-                          backgroundColor: day.currentMonth ? 'var(--bb-surface-container-low)' : 'transparent',
-                          border: day.currentMonth ? '1px solid transparent' : '1px dashed var(--bb-surface-container)',
-                          transition: 'all 0.2s ease',
-                          cursor: 'pointer',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bb-surface-container)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = day.currentMonth ? 'var(--bb-surface-container-low)' : 'transparent')}
-                      >
-                        <Stack justify="space-between" h="100%" gap={0}>
-                          <Text fz="sm" fw={800} c={day.currentMonth ? 'var(--bb-on-surface)' : 'var(--bb-outline)'}>
-                            {day.day}
-                          </Text>
-                          <Stack gap={rem(4)}>
-                            {day.events.map((event, eventIdx) => (
-                              <Badge 
-                                key={eventIdx} 
-                                size="xs" 
-                                radius="sm" 
-                                variant="light"
-                                color={event.type === 'study' ? 'green' : event.type === 'speaking' ? 'blue' : 'orange'}
-                                fw={800}
-                                fullWidth
-                                tt="none"
-                              >
-                                {event.title}
-                              </Badge>
-                            ))}
-                          </Stack>
-                        </Stack>
-                      </Paper>
-                    ))}
-                  </SimpleGrid>
-                </Box>
+                {loading ? (
+                  <Skeleton h={rem(480)} radius={16} />
+                ) : (
+                  <CalendarGrid
+                    year={currentYear}
+                    month={currentMonth}
+                    eventsByDate={eventsByDate}
+                    selectedDate={selectedDate}
+                    onSelectDate={setSelectedDate}
+                  />
+                )}
               </Stack>
             </Card>
+          </Box>
 
-            {/* Weekly Goals Section */}
-            <Stack gap={rem(32)}>
-              <Title order={2} fz={rem(24)} fw={800}>Weekly Scholarly Goals</Title>
-              <SimpleGrid cols={{ base: 1, md: 3 }} spacing="xl">
-                {GOALS.map(goal => (
-                  <Card key={goal.id} radius={24} p={rem(32)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
-                    <Stack gap={rem(24)}>
-                      <Badge variant="light" color="gray" radius="sm" fw={800} size="xs">{goal.category}</Badge>
-                      <Title order={3} fz={rem(18)} fw={800} lh={1.4}>{goal.title}</Title>
-                      <Stack gap={rem(8)}>
-                        <Group justify="space-between">
-                          <Text fz="xs" fw={700}>Progress</Text>
-                          <Text fz="xs" fw={800} c="var(--bb-primary)">{goal.progress}%</Text>
-                        </Group>
-                        <Box h={rem(8)} bg="var(--bb-surface-container)" style={{ borderRadius: 10, overflow: 'hidden' }}>
-                          <Box 
-                            h="100%" 
-                            w={`${goal.progress}%`} 
-                            style={{ 
-                              backgroundColor: goal.color, 
-                              transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)',
-                              backgroundImage: 'linear-gradient(90deg, rgba(255,255,255,0.2) 0%, transparent 100%)'
-                            }} 
-                          />
-                        </Box>
-                      </Stack>
-                    </Stack>
-                  </Card>
-                ))}
-              </SimpleGrid>
-            </Stack>
+          {/* Right sidebar — 1 col */}
+          <Stack gap={rem(24)}>
+            {loading ? (
+              <>
+                <Skeleton h={rem(360)} radius={24} />
+                <Skeleton h={rem(180)} radius={24} />
+              </>
+            ) : (
+              <>
+                <DayAgendaPanel
+                  selectedDate={selectedDate}
+                  events={selectedEvents}
+                  planId={calendarData?.planId ?? ''}
+                  onEventUpdate={handleEventUpdate}
+                />
+
+                {hskProgress.length > 0 ? (
+                  <HskProgressCard
+                    hskProgress={hskProgress}
+                    currentLevel={userHskLevel}
+                    targetLevel={targetLevel}
+                    charactersThisWeek={userStats?.charactersThisWeek ?? 0}
+                  />
+                ) : (
+                  <Box
+                    p={rem(28)}
+                    style={{
+                      borderRadius: rem(24),
+                      background: 'linear-gradient(135deg, #0a220a 0%, #154212 100%)',
+                      color: 'white',
+                    }}
+                  >
+                    <Text fw={800} fz={rem(16)} mb={rem(8)}>HSK {userHskLevel} Mastery</Text>
+                    <Text fz="xs" style={{ opacity: 0.75 }}>
+                      Complete study sessions to track your character progress here.
+                    </Text>
+                  </Box>
+                )}
+
+                {/* Agent notes */}
+                {calendarData?.lastAgentNote && (
+                  <Box p={rem(16)} style={{ borderRadius: rem(16), backgroundColor: 'rgba(21,66,18,0.04)', border: '1px solid rgba(21,66,18,0.12)' }}>
+                    <Text fz="xs" fw={800} c="var(--bb-primary)" mb={rem(4)}>🤖 Master Ling&apos;s Note</Text>
+                    <Text fz="xs" fw={500} c="var(--bb-on-surface-variant)">{calendarData.lastAgentNote}</Text>
+                  </Box>
+                )}
+              </>
+            )}
           </Stack>
-        </Box>
+        </SimpleGrid>
+      </Stack>
 
-        {/* Sidebar Section (1 column) */}
-        <Stack gap={rem(40)}>
-          {/* Upcoming Card */}
-          <Card radius={32} p={rem(32)} style={{ backgroundColor: 'var(--bb-surface-container-lowest)', border: 'none' }}>
-            <Title order={3} fz={rem(18)} fw={800} mb={rem(24)}>The Scholar's Path</Title>
-            <Stack gap={rem(32)}>
-              {UPCOMING_TASKS.map((task, idx) => (
-                <Group key={idx} wrap="nowrap" align="flex-start" gap="md">
-                  <Box p={rem(10)} bg="var(--bb-surface-container-low)" style={{ borderRadius: 12, color: 'var(--bb-primary)' }}>
-                    {task.icon}
-                  </Box>
-                  <Box>
-                    <Text fz="xs" fw={800} c="var(--bb-primary)" mb={rem(4)}>{task.time}</Text>
-                    <Text fz="sm" fw={700} mb={rem(2)}>{task.title}</Text>
-                    <Text fz={rem(12)} fw={600} c="var(--bb-outline)" lh={1.4}>{task.desc}</Text>
-                  </Box>
-                </Group>
-              ))}
-            </Stack>
-            <Button fullWidth mt={rem(40)} radius={12} variant="light" color="gray" h={rem(48)} fw={800}>
-              View Agenda
-            </Button>
-          </Card>
-
-          {/* Quick Stats Sidebar */}
-          <Card radius={32} p={rem(32)} style={{ backgroundColor: 'var(--bb-primary)', color: 'white' }}>
-            <Stack gap={rem(24)}>
-              <Box>
-                <Title order={4} fz={rem(16)} fw={800} mb={rem(8)}>HSK 4 Mastery</Title>
-                <Text fz="xs" fw={500} style={{ opacity: 0.8 }}>You've mastered 42 new characters this week. Keep up the calligraphy practice!</Text>
-              </Box>
-              <Group gap="lg">
-                <Stack gap={rem(4)}>
-                  <Text fz={rem(24)} fw={800}>1,284</Text>
-                  <Text fz={rem(10)} fw={700} style={{ opacity: 0.7 }} tt="uppercase">Chars</Text>
-                </Stack>
-                <Stack gap={rem(4)}>
-                  <Text fz={rem(24)} fw={800}>92%</Text>
-                  <Text fz={rem(10)} fw={700} style={{ opacity: 0.7 }} tt="uppercase">Acc.</Text>
-                </Stack>
-              </Group>
-            </Stack>
-          </Card>
-
-          {/* Productivity Tip */}
-          <Card radius={32} p={rem(32)} style={{ backgroundColor: 'rgba(217, 72, 15, 0.05)', border: '1px solid rgba(217, 72, 15, 0.1)' }}>
-            <Group gap="sm" mb={rem(16)}>
-              <IconClock size={20} color="#d9480f" />
-              <Text fz="xs" fw={800} c="#d9480f" tt="uppercase">Productivity Tip</Text>
-            </Group>
-            <Text fz="sm" fw={700} lh={1.6}>
-              "The best time to plant a tree was 20 years ago. The second best time is now." 
-              <br /><br />
-              Schedule your most complex Hanzi reviews during your peak focus hours.
-            </Text>
-          </Card>
-        </Stack>
-      </SimpleGrid>
+      <CreatePlanWizard
+        isOpen={wizardOpened}
+        onClose={closeWizard}
+        onCreated={(newPlan) => {
+          setPlan(newPlan);
+          loadCalendar();
+        }}
+      />
     </AppLayout>
   );
 }
