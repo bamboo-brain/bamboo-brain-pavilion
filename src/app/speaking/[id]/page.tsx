@@ -27,7 +27,7 @@ import { SessionInsightsPanel } from '@/components/speaking/SessionInsightsPanel
 import { MicButton } from '@/components/speaking/MicButton';
 import { IconArrowLeft, IconPlayerStop, IconAlertCircle } from '@tabler/icons-react';
 import { getSession, processAudioTurn, endSession } from '@/lib/api/speaking';
-import { AudioRecorder, blobToBase64, createAudioAnalyser } from '@/lib/audio-recorder';
+import { AudioRecorder, blobToBase64, convertToWav, createAudioAnalyser } from '@/lib/audio-recorder';
 import type { SpeakingSession, ConversationTurn } from '@/types/speaking';
 
 export default function ActiveSessionPage() {
@@ -143,9 +143,10 @@ export default function ActiveSessionPage() {
     setIsProcessing(true);
 
     try {
-      const blob = await recorderRef.current.stop();
-      const base64 = await blobToBase64(blob);
-      const mimeType = blob.type || recorderRef.current.getMimeType();
+      const webmBlob = await recorderRef.current.stop();
+      const wavBlob = await convertToWav(webmBlob);
+      const base64 = await blobToBase64(wavBlob);
+      const mimeType = 'audio/wav';
 
       // Optimistic placeholder
       const placeholder: ConversationTurn = {
