@@ -51,7 +51,10 @@ export default function QuizResultsPage() {
       .then((s) => {
         setQuizSession(s);
         if (s.status === 'completed') {
-          const minutesSpent = Math.max(1, Math.round((s.timeSpentSeconds ?? 0) / 60));
+          const timeTaken = s.timeCompleted && s.timeStarted
+            ? Math.round((new Date(s.timeCompleted).getTime() - new Date(s.timeStarted).getTime()) / 1000)
+            : 0;
+          const minutesSpent = Math.max(1, Math.round(timeTaken / 60));
           recordActivity({ activityType: 'quiz', minutesSpent, itemsCompleted: s.totalQuestions, resourceId: s.id }, accessToken).catch(() => {});
         }
       })
