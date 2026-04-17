@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useDisclosure } from '@mantine/hooks';
@@ -90,7 +90,7 @@ const HSK_LABELS: Record<number, { label: string; hanzi: string }> = {
   6: { label: 'HSK Level 6',       hanzi: '六级' },
 };
 
-export default function DashboardPage() {
+function DashboardPageContent() {
   const { data: session } = useSession();
   const router = useRouter();
   const [taskModalOpened, { close: closeTaskModal }] = useDisclosure(false);
@@ -629,5 +629,13 @@ export default function DashboardPage() {
       {/* Modals */}
       <AddTaskModal opened={taskModalOpened} onClose={closeTaskModal} />
     </AppLayout>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <DashboardPageContent />
+    </Suspense>
   );
 }
