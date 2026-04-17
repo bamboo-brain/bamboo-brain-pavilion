@@ -285,31 +285,6 @@ export default function DashboardPage() {
           </Box>
         </SimpleGrid>
 
-        {/* Library Search */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (dashQuery.trim()) router.push(`/library?q=${encodeURIComponent(dashQuery)}`);
-          }}
-        >
-          <TextInput
-            value={dashQuery}
-            onChange={(e) => setDashQuery(e.currentTarget.value)}
-            placeholder="Search your library..."
-            leftSection={<IconSearch size={16} color="var(--bb-outline)" />}
-            styles={{
-              input: {
-                height: rem(48),
-                borderRadius: rem(14),
-                backgroundColor: 'var(--bb-surface-container-lowest)',
-                border: '1px solid var(--bb-surface-container)',
-                fontSize: rem(14),
-                fontWeight: 600,
-              },
-            }}
-          />
-        </form>
-
         {/* Quick Actions & Recent Uploads */}
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing={rem(32)}>
           {/* Quick Actions Panel */}

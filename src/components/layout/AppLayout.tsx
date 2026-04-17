@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   AppShell,
   Text,
@@ -33,7 +34,7 @@ import {
 import { NotificationList } from '@/components/dashboard/NotificationList';
 import { NotificationDrawer } from '@/components/notifications/NotificationDrawer';
 import RagChatPanel from '@/components/search/RagChatPanel';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { IconLogout } from '@tabler/icons-react';
 
@@ -49,14 +50,23 @@ const NAV_ITEMS = [
 export function AppLayout({ children, title }: { children: React.ReactNode; title?: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const [notificationPopoverOpened, setNotificationPopoverOpened] = useState(false);
   const [notificationDrawerOpened, setNotificationDrawerOpened] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [headerSearchQuery, setHeaderSearchQuery] = useState(searchParams.get('q') ?? '');
 
   const displayName = session?.user?.name ?? 'Scholar';
   const hskLevel = session?.user?.hskLevel;
   const hskLabel = hskLevel != null ? `HSK Level ${hskLevel}` : 'Scholar';
+
+  const handleHeaderSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (headerSearchQuery.trim()) {
+      router.push(`/library?q=${encodeURIComponent(headerSearchQuery)}`);
+    }
+  };
 
   return (
     <AppShell
@@ -166,21 +176,31 @@ export function AppLayout({ children, title }: { children: React.ReactNode; titl
               {title}
             </Box>
             <Group gap="xl">
-              <TextInput
-                placeholder="Search your library..."
-                rightSection={<IconSearch size={20} color="var(--bb-outline)" />}
-                styles={{
-                  input: {
-                    width: rem(340),
-                    height: rem(48),
-                    borderRadius: rem(12),
-                    border: 'none',
-                    backgroundColor: 'var(--bb-surface-container-lowest)',
-                    paddingLeft: rem(20),
-                    fontSize: rem(14),
-                  },
-                }}
-              />
+            <TextInput
+              placeholder="Search your library..."
+              rightSection={<IconSearch size={20} color="var(--bb-outline)" />}
+              value={headerSearchQuery}
+              onChange={(e) => setHeaderSearchQuery(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleHeaderSearch(e as any);
+              }}
+              onClick={(e) => {
+                if (pathname !== '/library') {
+                  e.currentTarget.style.cursor = 'pointer';
+                }
+              }}
+              styles={{
+                input: {
+                  width: rem(340),
+                  height: rem(48),
+                  borderRadius: rem(12),
+                  border: 'none',
+                  backgroundColor: 'var(--bb-surface-container-lowest)',
+                  paddingLeft: rem(20),
+                  fontSize: rem(14),
+                },
+              }}
+            />
               <Group gap="md">
                 <Popover width={340} position="bottom-end" shadow="lg" radius={rem(24)} offset={12} transitionProps={{ transition: 'pop-top-right' }} opened={notificationPopoverOpened} onChange={setNotificationPopoverOpened}>
                   <Popover.Target>

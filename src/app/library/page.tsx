@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useDebouncedValue } from '@mantine/hooks';
@@ -105,7 +105,7 @@ function extractionStageLabel(progress: number): string {
   return 'Finalizing…';
 }
 
-export default function LibraryPage() {
+function LibraryPageContent() {
   const { data: session } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -764,5 +764,13 @@ export default function LibraryPage() {
 
 
     </AppLayout>
+  );
+}
+
+export default function LibraryPage() {
+  return (
+    <Suspense fallback={null}>
+      <LibraryPageContent />
+    </Suspense>
   );
 }
