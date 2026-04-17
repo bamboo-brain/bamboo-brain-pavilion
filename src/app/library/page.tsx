@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useDebouncedValue } from '@mantine/hooks';
 import {
   Title,
@@ -42,6 +42,9 @@ import {
 } from '@tabler/icons-react';
 import { CreateDeckModal } from '@/components/flashcards/CreateDeckModal';
 import { QuizSetupModal } from '@/components/quiz/QuizSetupModal';
+import SearchResultCard from '@/components/library/SearchResultCard';
+import { searchDocuments } from '@/lib/api/search';
+import type { DocumentSearchResult } from '@/types/search';
 import {
   uploadDocument,
   listDocuments,
@@ -105,6 +108,7 @@ function extractionStageLabel(progress: number): string {
 export default function LibraryPage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const accessToken = session?.accessToken ?? '';
 
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -119,6 +123,9 @@ export default function LibraryPage() {
   const [debouncedSearch] = useDebouncedValue(search, 400);
   const prevFilterRef = useRef(activeFilter);
   const prevSearchRef = useRef(debouncedSearch);
+
+  const [aiSearchResults, setAiSearchResults] = useState<DocumentSearchResult | null>(null);
+  const [isAiSearching, setIsAiSearching] = useState(false);
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -136,6 +143,35 @@ export default function LibraryPage() {
 
   const [createDeckDoc, setCreateDeckDoc] = useState<{ id: string; name: string } | null>(null);
   const [quizDoc, setQuizDoc] = useState<{ id: string; name: string } | null>(null);
+
+  // Read `q` query param on mount (from dashboard search)
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) setSearch(q);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // AI semantic search effect
+  useEffect(() => {
+    if (!accessToken || !debouncedSearch.trim()) {
+      setAiSearchResults(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsAiSearching(true);
+
+    const fileType = ['PDFs', 'Videos', 'Audios'].includes(activeFilter)
+      ? activeFilter.slice(0, -1).toLowerCase()
+      : undefined;
+    const hskLevel = activeFilter.startsWith('HSK') ? parseInt(activeFilter.split(' ')[1]) : undefined;
+
+    searchDocuments(debouncedSearch, accessToken, { top: 10, fileType, hskLevel })
+      .then((results) => { if (!cancelled) setAiSearchResults(results); })
+      .catch(console.error)
+      .finally(() => { if (!cancelled) setIsAiSearching(false); });
+
+    return () => { cancelled = true; };
+  }, [debouncedSearch, activeFilter, accessToken]);
 
   // Main fetch effect
   useEffect(() => {
@@ -484,8 +520,42 @@ export default function LibraryPage() {
                 </Group>
               </Group>
 
-              {/* File Table */}
-              <ScrollArea>
+              {/* AI Search Results */}
+              {aiSearchResults && (
+                <Stack gap={rem(16)}>
+                  <Group justify="space-between" align="center">
+                    <Text fz="sm" fw={600} c="var(--bb-outline)">
+                      {aiSearchResults.totalCount} documents found for &quot;{aiSearchResults.query}&quot;
+                    </Text>
+                    {isAiSearching && <Loader size="xs" color="var(--bb-primary)" />}
+                  </Group>
+
+                  {aiSearchResults.hits.length === 0 ? (
+                    <Stack align="center" py={rem(48)} gap={rem(8)}>
+                      <Text fz={rem(36)}>🔍</Text>
+                      <Text fw={700} c="var(--bb-on-surface)">
+                        No documents found for &quot;{search}&quot;
+                      </Text>
+                      <Text fz="sm" c="var(--bb-outline)" fw={600}>
+                        Try different keywords or upload relevant documents
+                      </Text>
+                    </Stack>
+                  ) : (
+                    <Stack gap={0}>
+                      {aiSearchResults.hits.map((hit) => (
+                        <SearchResultCard
+                          key={hit.documentId}
+                          hit={hit}
+                          onOpen={() => router.push(`/library/${hit.documentId}`)}
+                        />
+                      ))}
+                    </Stack>
+                  )}
+                </Stack>
+              )}
+
+              {/* File Table — hidden when AI search is active */}
+              {!aiSearchResults && (<ScrollArea>
                 {loading ? (
                   <Group justify="center" py={rem(48)}>
                     <Loader color="var(--bb-primary)" />
@@ -612,10 +682,10 @@ export default function LibraryPage() {
                     </Table.Tbody>
                   </Table>
                 )}
-              </ScrollArea>
+              </ScrollArea>)}
 
               {/* Pagination */}
-              {!loading && totalCount > 0 && (
+              {!aiSearchResults && !loading && totalCount > 0 && (
                 <Stack gap={rem(16)} align="center" mt={rem(16)}>
                   <Group gap={rem(12)}>
                     <ActionIcon
@@ -691,6 +761,8 @@ export default function LibraryPage() {
           </Group>
         </Stack>
       </Modal>
+
+
     </AppLayout>
   );
 }

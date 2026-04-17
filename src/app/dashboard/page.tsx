@@ -18,6 +18,7 @@ import {
   Badge,
   rem,
   Skeleton,
+  TextInput,
 } from '@mantine/core';
 import { AddTaskModal } from '@/components/dashboard/AddTaskModal';
 import { ActivityHeatmap } from '@/components/stats/ActivityHeatmap';
@@ -38,6 +39,7 @@ import {
   IconBook2,
   IconMicrophone,
   IconBrain,
+  IconSearch,
 } from '@tabler/icons-react';
 import { listDocuments, type Document } from '@/lib/documents';
 import { getUserStats } from '@/lib/api/planner';
@@ -95,6 +97,7 @@ export default function DashboardPage() {
   const [recentDocs, setRecentDocs] = useState<Document[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
+  const [dashQuery, setDashQuery] = useState('');
 
   const accessToken = session?.accessToken ?? '';
   const firstName = session?.user?.name?.split(' ')[0] ?? 'Scholar';
@@ -281,6 +284,31 @@ export default function DashboardPage() {
             </Card>
           </Box>
         </SimpleGrid>
+
+        {/* Library Search */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (dashQuery.trim()) router.push(`/library?q=${encodeURIComponent(dashQuery)}`);
+          }}
+        >
+          <TextInput
+            value={dashQuery}
+            onChange={(e) => setDashQuery(e.currentTarget.value)}
+            placeholder="Search your library..."
+            leftSection={<IconSearch size={16} color="var(--bb-outline)" />}
+            styles={{
+              input: {
+                height: rem(48),
+                borderRadius: rem(14),
+                backgroundColor: 'var(--bb-surface-container-lowest)',
+                border: '1px solid var(--bb-surface-container)',
+                fontSize: rem(14),
+                fontWeight: 600,
+              },
+            }}
+          />
+        </form>
 
         {/* Quick Actions & Recent Uploads */}
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing={rem(32)}>

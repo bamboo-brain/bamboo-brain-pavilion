@@ -68,24 +68,30 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     const connect = async () => {
       try {
+        console.log('Starting SignalR connection...');
         const connection = await createSignalRConnection(session.accessToken!);
 
         // Listen for new notifications pushed from backend
         connection.on('ReceiveNotification', (notification: Notification) => {
+          console.log('Received notification:', notification);
           setNotifications((prev) => [notification, ...prev]);
           setUnreadCount((prev) => prev + 1);
         });
 
         connection.onclose(() => {
+          console.warn('SignalR connection closed');
           if (!cancelled) setIsConnected(false);
         });
 
         connection.onreconnected(() => {
+          console.log('SignalR reconnected');
           if (!cancelled) setIsConnected(true);
         });
 
+        console.log('Starting SignalR hub connection...');
         await connection.start();
 
+        console.log('SignalR connected successfully');
         if (!cancelled) {
           connectionRef.current = connection;
           setIsConnected(true);
@@ -94,7 +100,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }
       } catch (err) {
         console.error('SignalR connection failed:', err);
+        if (err instanceof Error) {
+          console.error('Error message:', err.message);
+          console.error('Error stack:', err.stack);
+        }
         // Fall back to polling every 30s if SignalR fails
+        console.log('Falling back to polling mode (30s interval)');
         const interval = setInterval(() => {
           if (!cancelled) refresh();
         }, 30000);

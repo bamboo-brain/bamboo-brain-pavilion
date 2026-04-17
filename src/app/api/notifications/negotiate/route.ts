@@ -12,6 +12,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (!API_URL) {
+      console.error('API_URL environment variable not set');
+      return NextResponse.json(
+        { error: 'Server configuration error: API_URL not set' },
+        { status: 500 }
+      );
+    }
+
+    console.log('Forwarding negotiate to backend:', `${API_URL}/api/notifications/negotiate`);
+
     const res = await fetch(`${API_URL}/api/notifications/negotiate`, {
       method: 'POST',
       headers: {
@@ -21,18 +31,21 @@ export async function POST(request: NextRequest) {
     });
 
     if (!res.ok) {
+      const errorText = await res.text();
+      console.error('Backend negotiate failed:', res.status, res.statusText, errorText);
       return NextResponse.json(
-        { error: `Backend error: ${res.statusText}` },
+        { error: `Backend error: ${res.statusText}`, details: errorText },
         { status: res.status }
       );
     }
 
     const data = await res.json();
+    console.log('Negotiate success, returning SignalR URL');
     return NextResponse.json(data);
   } catch (error) {
     console.error('SignalR negotiate error:', error);
     return NextResponse.json(
-      { error: 'Failed to negotiate SignalR connection' },
+      { error: 'Failed to negotiate SignalR connection', details: String(error) },
       { status: 500 }
     );
   }
