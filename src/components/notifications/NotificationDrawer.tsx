@@ -52,6 +52,18 @@ export function NotificationDrawer({ opened, onClose }: NotificationDrawerProps)
     }
   };
 
+  const formatDate = (dateStr: string | Date): string => {
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) {
+        return 'recently';
+      }
+      return formatDistanceToNow(date, { addSuffix: true });
+    } catch {
+      return 'recently';
+    }
+  };
+
   return (
     <Drawer
       opened={opened}
@@ -197,7 +209,7 @@ export function NotificationDrawer({ opened, onClose }: NotificationDrawerProps)
                     {n.message}
                   </Text>
                   <Text fz={rem(10)} fw={600} c="var(--bb-outline)">
-                    {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
+                    {formatDate(n.createdAt)}
                   </Text>
                 </Stack>
 

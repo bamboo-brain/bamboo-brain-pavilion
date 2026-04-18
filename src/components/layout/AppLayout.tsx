@@ -29,12 +29,13 @@ import {
   IconChartLine,
   IconSettings,
   IconSchool,
-  IconMessageCircle,
 } from '@tabler/icons-react';
 import { NotificationList } from '@/components/dashboard/NotificationList';
 import { NotificationDrawer } from '@/components/notifications/NotificationDrawer';
 import { HeaderSearchInput } from './HeaderSearchInput';
 import RagChatPanel from '@/components/search/RagChatPanel';
+import StudyAdvisorPanel from '@/components/advisor/StudyAdvisorPanel';
+import UnifiedChatLauncher from '@/components/chat/UnifiedChatLauncher';
 import { usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { IconLogout } from '@tabler/icons-react';
@@ -54,7 +55,8 @@ export function AppLayout({ children, title }: { children: React.ReactNode; titl
   const { data: session } = useSession();
   const [notificationPopoverOpened, setNotificationPopoverOpened] = useState(false);
   const [notificationDrawerOpened, setNotificationDrawerOpened] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [advisorPanelOpened, setAdvisorPanelOpened] = useState(false);
+  const [ragChatPanelOpened, setRagChatPanelOpened] = useState(false);
 
   const displayName = session?.user?.name ?? 'Scholar';
   const hskLevel = session?.user?.hskLevel;
@@ -236,37 +238,17 @@ export function AppLayout({ children, title }: { children: React.ReactNode; titl
 
       <NotificationDrawer opened={notificationDrawerOpened} onClose={() => setNotificationDrawerOpened(false)} />
 
-      {/* Floating Chat Button */}
-      <ActionIcon
-        onClick={() => setIsChatOpen(true)}
-        size="xl"
-        radius="xl"
-        color="var(--bb-primary)"
-        style={{
-          position: 'fixed',
-          bottom: rem(24),
-          right: rem(24),
-          zIndex: 35,
-          backgroundColor: 'var(--bb-primary)',
-          color: 'white',
-          boxShadow: '0 8px 24px rgba(21, 66, 18, 0.3)',
-          transition: 'all 0.2s ease',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'scale(1.08)';
-          e.currentTarget.style.boxShadow = '0 12px 32px rgba(21, 66, 18, 0.4)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'scale(1)';
-          e.currentTarget.style.boxShadow = '0 8px 24px rgba(21, 66, 18, 0.3)';
-        }}
-        title="Ask Master Ling about your documents"
-      >
-        <IconMessageCircle size={22} />
-      </ActionIcon>
+      {/* Unified Chat Launcher */}
+      <UnifiedChatLauncher
+        onOpenAdvisor={() => setAdvisorPanelOpened(true)}
+        onOpenRagChat={() => setRagChatPanelOpened(true)}
+      />
 
-      {/* Chat Panel */}
-      <RagChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+      {/* Study Advisor Panel */}
+      <StudyAdvisorPanel isOpen={advisorPanelOpened} onClose={() => setAdvisorPanelOpened(false)} />
+
+      {/* RAG Chat Panel */}
+      <RagChatPanel isOpen={ragChatPanelOpened} onClose={() => setRagChatPanelOpened(false)} />
     </AppShell>
   );
 }

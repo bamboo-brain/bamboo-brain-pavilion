@@ -71,26 +71,35 @@ export const authOptions: NextAuthOptions = {
         };
       },
     }),
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          scope: 'openid email profile https://www.googleapis.com/auth/calendar.events',
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-      },
-    }),
-    AzureADProvider({
-      clientId: process.env.AZURE_AD_CLIENT_ID!,
-      clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-      tenantId: process.env.AZURE_AD_TENANT_ID!,
-    }),
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? [
+          GoogleProvider({
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            authorization: {
+              params: {
+                scope: 'openid email profile https://www.googleapis.com/auth/calendar.events',
+                access_type: 'offline',
+                prompt: 'consent',
+              },
+            },
+          }),
+        ]
+      : []),
+    ...(process.env.AZURE_AD_CLIENT_ID && process.env.AZURE_AD_CLIENT_SECRET && process.env.AZURE_AD_TENANT_ID
+      ? [
+          AzureADProvider({
+            clientId: process.env.AZURE_AD_CLIENT_ID,
+            clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
+            tenantId: process.env.AZURE_AD_TENANT_ID,
+          }),
+        ]
+      : []),
   ],
   pages: {
     signIn: '/login',
   },
+  secret: process.env.NEXTAUTH_SECRET,
   session: {
     strategy: 'jwt',
   },
