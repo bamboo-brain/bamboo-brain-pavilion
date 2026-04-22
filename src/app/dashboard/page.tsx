@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useDisclosure } from '@mantine/hooks';
@@ -41,7 +41,7 @@ import {
   IconBrain,
   IconSearch,
 } from '@tabler/icons-react';
-import { listDocuments, type Document } from '@/lib/documents';
+import { listDocuments, uploadDocument, type Document } from '@/lib/documents';
 import { getUserStats } from '@/lib/api/planner';
 import type { UserStats } from '@/types/stats';
 
@@ -98,6 +98,26 @@ function DashboardPageContent() {
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [dashQuery, setDashQuery] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleUpload(file: File) {
+    if (file.size > 100 * 1024 * 1024) {
+      setUploadError('File size exceeds 100MB limit.');
+      return;
+    }
+    setUploadError(null);
+    setUploading(true);
+    try {
+      await uploadDocument(file, accessToken);
+      router.push('/library');
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const accessToken = session?.accessToken ?? '';
   const firstName = session?.user?.name?.split(' ')[0] ?? 'Scholar';
@@ -292,8 +312,16 @@ function DashboardPageContent() {
             <Text fz={rem(13)} fw={800} c="var(--bb-on-surface-variant)" tt="uppercase" lts={rem(2)} mb={rem(24)}>
               Quick Actions
             </Text>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.mp4,.mp3,.wav,.m4a,.ppt,.pptx"
+              style={{ display: 'none' }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }}
+            />
             <UnstyledButton
-              onClick={() => router.push('/library')}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
               style={{
                 height: rem(260),
                 width: '100%',
@@ -306,10 +334,14 @@ function DashboardPageContent() {
                 color: 'white',
                 transition: 'all 0.3s ease',
                 boxShadow: '0 8px 24px rgba(21, 66, 18, 0.15)',
+                opacity: uploading ? 0.7 : 1,
+                cursor: uploading ? 'not-allowed' : 'pointer',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)';
-                e.currentTarget.style.boxShadow = '0 12px 32px rgba(21, 66, 18, 0.25)';
+                if (!uploading) {
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 12px 32px rgba(21, 66, 18, 0.25)';
+                }
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'translateY(0)';
@@ -318,10 +350,10 @@ function DashboardPageContent() {
             >
               <IconUpload size={rem(56)} style={{ marginBottom: rem(20), opacity: 0.95 }} />
               <Title order={4} fz={rem(20)} fw={800}>
-                Upload New File
+                {uploading ? 'Uploading…' : 'Upload New File'}
               </Title>
               <Text fz={rem(14)} style={{ opacity: 0.85 }} mt={rem(6)} fw={500}>
-                PDF, MP4, or Audio
+                {uploadError ?? 'PDF, MP4, or Audio'}
               </Text>
             </UnstyledButton>
           </Box>
