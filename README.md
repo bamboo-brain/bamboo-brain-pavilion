@@ -68,6 +68,10 @@ Most importantly, BambooBrain is built for real learners in real contexts. It is
 
 ![BambooBrain architecture](public/img/bamboo-architecture.jpg)
 
+## User Interface Examples
+
+![BambooBrain user interface](public/img/bamboo-ui.png)
+
 ## Run Locally
 
 ### 1. Prerequisites
